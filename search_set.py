@@ -1,7 +1,8 @@
-import argparse
 import os
 from datetime import datetime
+
 import pandas as pd
+
 
 def generate_search_set(gene):
     # Transform DGIdb Dataset to match input gene
@@ -19,4 +20,3 @@ def generate_search_set(gene):
     out_path = os.path.join("search", out_filename)
     tdf.to_csv(out_path, index=False)
     print(f'Search set saved to {out_path}')
-    

@@ -1,20 +1,15 @@
-import argparse
-import ast
-import csv
-import os
-import xml.etree.ElementTree as ET
-from typing import List, Tuple
 import gc
-
 import time
-from requests.exceptions import ChunkedEncodingError, RequestException
+import xml.etree.ElementTree as ET
 
 import pandas as pd
 import requests
+from requests.exceptions import ChunkedEncodingError, RequestException
 from tqdm import tqdm
 
+
 def fetch_abstracts(pmids):
-    abstracts: List[Tuple[str, str]] = []
+    abstracts: list[tuple[str, str]] = []
     if not pmids:
         return abstracts
 
@@ -64,7 +59,7 @@ def fetch_abstracts(pmids):
 
 
 # RAW FETCH
-def fetch_pmids_by_string(term: str) -> List[str]:
+def fetch_pmids_by_string(term: str) -> list[str]:
     """Return a list of PubMed IDs for a given search term."""
     search_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
     params = {"db": "pubmed", "term": term, "retmode": "json", "retmax": 10000}
@@ -76,7 +71,7 @@ def fetch_pmids_by_string(term: str) -> List[str]:
 
 # NCBI GENE METHOD
 def fetch_pmids_by_ncbi_gene_id(term: str) -> str:
-    url = f'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?'
+    url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?'
     params = {"db": "gene", "term": f'{term}[PREF] AND Homo sapiens[ORGN]', "usehistory":"y", "retmode": "json"}
     resp = requests.get(url, params=params, timeout=10)
     resp.raise_for_status()
@@ -125,7 +120,7 @@ def fetch_pmids_by_pubtator3(term: str) -> str:
 
 
 # PUBTATOR METHOD (GENE+DRUG)
-def fetch_pmids_by_pubtator3drug(gene: str, drugs: List[str]) -> str:
+def fetch_pmids_by_pubtator3drug(gene: str, drugs: list[str]) -> str:
     # Load Gene Pubtator3 Reference Set
     gene_reference = pd.read_csv('data/pubtator/gene2pubtator3', sep='\t', header=None)
     gene_reference.columns = ['PMID', 'EntityType', 'GeneID', 'MentionText', 'Source']
@@ -151,12 +146,12 @@ def fetch_pmids_by_pubtator3drug(gene: str, drugs: List[str]) -> str:
         merged_hits = merged_hits.drop_duplicates(subset='PMID', keep='first').reset_index(drop=True)
 
         pmids = list(merged_hits['PMID'])
-        pmids = [str(pmid) for pmid in pmids]   
+        pmids = [str(pmid) for pmid in pmids]
 
         pmid_dict[drug] = pmids
 
     # Clean up large variables
     del gene_reference, chemical_reference
-    gc.collect() 
+    gc.collect()
 
     return pmid_dict

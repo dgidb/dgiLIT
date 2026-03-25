@@ -1,10 +1,9 @@
 # Imports & NLP Code
-import pandas as pd
-from transformers import pipeline
+import inflect
 import pandas as pd
 import requests
 from tqdm import tqdm
-import inflect  
+from transformers import pipeline
 
 PIPE_GENE = pipeline("token-classification", model="alvaroalon2/biobert_genetic_ner", aggregation_strategy="first")
 
@@ -13,7 +12,7 @@ PIPE_CHEMICAL = pipeline("token-classification", model="alvaroalon2/biobert_chem
 PIPE_DISEASE = pipeline("token-classification", model="alvaroalon2/biobert_diseases_ner", aggregation_strategy="first")
 
 
-def process_text(text):    
+def process_text(text):
     tdf1 = _tag_genes(text)
     tdf2 = _tag_chemicals(text)
     tdf3 = _tag_diseases(text)

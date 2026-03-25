@@ -1,19 +1,20 @@
-import re
-from typing import Tuple, List
 import ast
-from datetime import datetime
 import csv
-import shutil
-from tqdm import tqdm
 import os
+import re
+import shutil
+from datetime import datetime
+
 import spacy
+from tqdm import tqdm
+
 nlp = spacy.load("en_core_web_sm", disable=["ner", "parser"])
 
 def _normalize(text: str) -> list[str]:
     doc = nlp(text.lower())
     return [token.lemma_ for token in doc if not token.is_stop and token.is_alpha]
 
-def parse_drug_terms(drug_entry: str) -> List[str]:
+def parse_drug_terms(drug_entry: str) -> list[str]:
     """Return all names from a ``(brand, generic)`` tuple string."""
     try:
         value = ast.literal_eval(drug_entry)
@@ -40,19 +41,19 @@ RETROSPECTIVE_STUDY = {'retrospective study', 'retrospective analysis', 'retrosp
 CHEMOTHERAPY_AGENTS = {
     # Alkylating agents
     "Cyclophosphamide", "Carmustine", "Cisplatin", "Carboplatin", "Oxaliplatin",
- 
+
     # Anthracyclines / related
     "Doxorubicin", "Daunorubicin", "Daunomycin", "Idarubicin",
- 
+
     # Antimetabolites (nucleoside analogues)
     "Fluorouracil", "Methotrexate", "Azacitidine",
- 
+
     # Taxanes & microtubule disruptors
     "Paclitaxel", "Docetaxel", "Vincristine", "Vinblastine", "Vinorelbine",
- 
+
     # Topoisomerase inhibitors
     "Etoposide", "Topotecan", "Irinotecan",
-} # Weight = 0, Should be hidable 
+} # Weight = 0, Should be hidable
 
 
 # ---------- LEMMA-LEVEL LEXICONS (single-token lemmas) ----------
@@ -77,7 +78,7 @@ PHARMACOGENOMIC_SIGNALS = {
 }
 
 
-def analyze_relation_interaction(gene: str, abstract: str) -> Tuple[str, float]:
+def analyze_relation_interaction(gene: str, abstract: str) -> tuple[str, float]:
     """
     """
     text = abstract.lower()
@@ -94,10 +95,10 @@ def analyze_relation_interaction(gene: str, abstract: str) -> Tuple[str, float]:
     indicators['unweighted_total'] = sum(indicators.values())
 
     label = 'interaction_evidence' if indicators['unweighted_total'] > 0 else 'no_interaction_evidence'
-    
+
     return label, indicators
 
-def analyze_relation(drug: str, gene: str, abstract: str) -> Tuple[str, float]:
+def analyze_relation(drug: str, gene: str, abstract: str) -> tuple[str, float]:
     """
     """
 
@@ -109,7 +110,7 @@ def analyze_relation(drug: str, gene: str, abstract: str) -> Tuple[str, float]:
         return ('not_evaluated', 0.0)
 
     indicators = {}
-    
+
     indicators['clinical_study'] = sum(word in text for word in CLINICAL_STUDY)
     indicators['case_report'] = sum(word in text for word in CASE_REPORT)
     indicators['animal_evidence'] = sum(word in text for word in ANIMAL_EVIDENCE)
@@ -150,11 +151,10 @@ def generate_interaction_evidence(abstracts, reference_df, start=0, stop=-1):
         writer = csv.DictWriter(fh, fieldnames=["pmid",'abstract', "label", "scores", 'tagged_drugs', 'concepts'])
         writer.writeheader()
         writer.writerows(results)
-                    
+
     archive_path = shutil.make_archive(base_name=timestamp_folder, format="zip", base_dir=f'{timestamp}_{gene}')
     shutil.rmtree(timestamp_folder)
     print(f'Results saved to {timestamp_folder}.zip!')
-    pass
 
 
 
@@ -173,7 +173,7 @@ def generate_indicators(abstracts, reference_df, start=0, stop=-1, mode='clinica
         for _, row in tqdm(abstracts.iloc[start:stop].iterrows(), desc="Abstracts", leave=False):
             pmid = row['pmid'] if 'pmid' in row else row.iloc[0]
             abstract = row['abstract'] if 'abstract' in row else row.iloc[1]
-            
+
             # Handle Extra Columns for NLP Processing
             try:
                 tagged_drugs = row['DRUG_LABELS']
@@ -189,8 +189,8 @@ def generate_indicators(abstracts, reference_df, start=0, stop=-1, mode='clinica
                 results.append({"pmid": pmid, "label": label, "scores": scores, 'tagged_drugs': tagged_drugs, 'concepts': concept  })
             else:
                 results.append({"pmid": pmid, "label": label, "scores": scores })
-    
-            if results: 
+
+            if results:
                 os.makedirs(timestamp_folder, exist_ok=True)
                 out_filename = f'{gene}_{drug[0]}.csv'.replace("/", "-")
                 out_path = os.path.join(timestamp_folder, out_filename)
@@ -201,7 +201,7 @@ def generate_indicators(abstracts, reference_df, start=0, stop=-1, mode='clinica
                         writer = csv.DictWriter(fh, fieldnames=["pmid", "label", "scores"])
                     writer.writeheader()
                     writer.writerows(results)
-                    
+
     archive_path = shutil.make_archive(base_name=timestamp_folder, format="zip", base_dir=f'{timestamp}_{gene}')
     shutil.rmtree(timestamp_folder)
     print(f'Results saved to {timestamp_folder}.zip!')

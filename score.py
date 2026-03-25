@@ -1,11 +1,12 @@
-from pathlib import Path
+import shutil
 import zipfile
+from pathlib import Path
+
 import pandas as pd
-import os, shutil
+
 
 def load_pmid_assessments(zip_file, search_method, out_dir="."):
-    """
-    Extracts <zip_file> into <out_dir>/<zip_stem>/ and concatenates all CSVs.
+    """Extracts <zip_file> into <out_dir>/<zip_stem>/ and concatenates all CSVs.
     Robust to empty files, mixed encodings, and various delimiters.
     """
     zip_path = Path(zip_file)
