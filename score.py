@@ -1,12 +1,20 @@
+"""Load and concatenate interaction lemma scores from pmids generated from interaction lemma assessments.
+
+This module grabs interaction lemma scores from pmid sets and concatenates them into a single df for downstream operations.
+"""
+import logging
 import shutil
 import zipfile
 from pathlib import Path
 
 import pandas as pd
 
+logger = logging.getLogger(__name__)
 
-def load_pmid_assessments(zip_file, search_method, out_dir="."):
-    """Extracts <zip_file> into <out_dir>/<zip_stem>/ and concatenates all CSVs.
+
+
+def load_pmid_assessments(zip_file: str, search_method: str, out_dir: str =".") -> pd.DataFrame:
+    """Extract <zip_file> into <out_dir>/<zip_stem>/ and concatenate all CSVs.
     Robust to empty files, mixed encodings, and various delimiters.
     """
     zip_path = Path(zip_file)
@@ -55,7 +63,8 @@ def load_pmid_assessments(zip_file, search_method, out_dir="."):
                 )
                 # If it loaded but has no columns (e.g., whitespace-only), treat as failure
                 if tdf.shape[1] == 0:
-                    raise pd.errors.EmptyDataError("No columns after parse")
+                    msg = f"No columns after parse for file: {fpath}"
+                    raise pd.errors.EmptyDataError(msg) # noqa: TRY301
                 break
             except (UnicodeDecodeError, pd.errors.EmptyDataError, pd.errors.ParserError) as e:
                 last_err = e
@@ -68,7 +77,8 @@ def load_pmid_assessments(zip_file, search_method, out_dir="."):
         # Derive gene/drug from filename "GENE_DRUG.csv"
         name = fpath.name.rsplit(".", 1)[0]
         parts = name.split("_", 1)
-        if len(parts) == 2:
+        expected_parts = 2
+        if len(parts) == expected_parts:
             gene, drug = parts
         else:
             # Fallback if underscore missing
@@ -88,11 +98,11 @@ def load_pmid_assessments(zip_file, search_method, out_dir="."):
 
     df = pd.concat(dfs, ignore_index=True)
 
-    # Optional: log any skipped files so you know what was ignored
+    # Log failures for review
     if failures:
-        print("Skipped files:")
+        logger.warning("Failures encountered during processing:")
         for p, err in failures:
-            print(f" - {p}: {err}")
+            logger.warning(" - %s: %s", p, err)
 
     shutil.rmtree(extract_dir, ignore_errors=True)
 
