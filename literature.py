@@ -1,3 +1,4 @@
+"""Methods to retrieve abstracts using pmids and annotations"""
 import gc
 import logging
 import time
