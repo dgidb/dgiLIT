@@ -1,27 +1,30 @@
-import argparse
-import ast
-import csv
-import os
-import xml.etree.ElementTree as ET
-from typing import List, Tuple
+"""Methods to retrieve abstracts using pmids and annotations"""
 import gc
-
+import logging
 import time
-from requests.exceptions import ChunkedEncodingError, RequestException
 
 import pandas as pd
 import requests
+from defusedxml import ElementTree as ET  # noqa: N817
+from requests.exceptions import ChunkedEncodingError, RequestException
 from tqdm import tqdm
 
-def fetch_abstracts(pmids):
-    abstracts: List[Tuple[str, str]] = []
+logger = logging.getLogger(__name__)
+
+
+
+
+
+def fetch_abstracts(pmids: list[str]) -> list[tuple[str, str]]:
+    """Use input of pmids to retrieve abstract text from pubmed"""
+    abstracts: list[tuple[str, str]] = []
     if not pmids:
         return abstracts
 
     fetch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
     batch_size = 200
     max_retries = 5
-    print(f'{len(pmids)} PMIDs found!\nFetching...')
+    print(f'{len(pmids)} PMIDs found!\nFetching...') # noqa: T201 (progress check)
 
     for i in tqdm(range(0, len(pmids), batch_size)):
         batch = pmids[i : i + batch_size]
@@ -38,13 +41,14 @@ def fetch_abstracts(pmids):
                 break  # success, exit retry loop
             except (ChunkedEncodingError, RequestException) as e:
                 if attempt == max_retries:
-                    print(f"[ERROR] Failed after {max_retries} attempts for batch {i}-{i+batch_size}: {e}")
+                    print(f"[ERROR] Failed after {max_retries} attempts for batch {i}-{i+batch_size}: {e}") # noqa: T201 (progress check)
                     continue  # Skip this batch
                 wait = 2 ** attempt
-                print(f"[WARNING] Attempt {attempt} failed: {e}. Retrying in {wait}s...")
+                print(f"[WARNING] Attempt {attempt} failed: {e}. Retrying in {wait}s...") # noqa: T201 (progress check)
                 time.sleep(wait)
         else:
             continue  # skip to next batch on failure
+
 
         try:
             root = ET.fromstring(resp.text)
@@ -56,27 +60,27 @@ def fetch_abstracts(pmids):
                 )
                 if abstract:
                     abstracts.append((pmid, abstract))
-        except ET.ParseError as e:
-            print(f"[ERROR] XML parse error: {e}")
+        except ET.ParseError:
+            logger.exception("XML parse error")
             continue
 
     return abstracts
 
 
 # RAW FETCH
-def fetch_pmids_by_string(term: str) -> List[str]:
+def fetch_pmids_by_string(term: str) -> list[str]:
     """Return a list of PubMed IDs for a given search term."""
     search_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
     params = {"db": "pubmed", "term": term, "retmode": "json", "retmax": 10000}
     resp = requests.get(search_url, params=params, timeout=10)
     resp.raise_for_status()
     data = resp.json()
-    pmids = data.get("esearchresult", {}).get("idlist", [])
-    return pmids
+    return data.get("esearchresult", {}).get("idlist", [])
 
 # NCBI GENE METHOD
 def fetch_pmids_by_ncbi_gene_id(term: str) -> str:
-    url = f'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?'
+    """Fetch PMIDs from PubMed using ncbi gene id annotations to narrow search space"""
+    url = 'https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?'
     params = {"db": "gene", "term": f'{term}[PREF] AND Homo sapiens[ORGN]', "usehistory":"y", "retmode": "json"}
     resp = requests.get(url, params=params, timeout=10)
     resp.raise_for_status()
@@ -101,15 +105,15 @@ def fetch_pmids_by_ncbi_gene_id(term: str) -> str:
             if db['linkname'] == 'gene_pubmed_all':
                 pmids = list(db['links'])
                 pmids = [str(pmid) for pmid in pmids]
-    print(pmids)
     return pmids
 
 # PUBTATOR METHOD (GENE)
 def fetch_pmids_by_pubtator3(term: str) -> str:
+    """Fetch PMIDs from PubMed using pubtator3 annotations to narrow search space"""
     # Load Gene Pubtator3 Reference Set
     gene_reference = pd.read_csv('data/pubtator/gene2pubtator3', sep='\t', header=None)
     gene_reference.columns = ['PMID', 'EntityType', 'GeneID', 'MentionText', 'Source']
-    print('Gene Pubtator3 set loaded!')
+    print('Gene Pubtator3 set loaded!') # noqa: T201 (progress marker)
 
     # Grab PMIDs from Pubtator3 using Reference Set
     gene_hits = gene_reference[gene_reference['MentionText'].str.contains(term, na=False)].reset_index(drop=True)
@@ -125,11 +129,12 @@ def fetch_pmids_by_pubtator3(term: str) -> str:
 
 
 # PUBTATOR METHOD (GENE+DRUG)
-def fetch_pmids_by_pubtator3drug(gene: str, drugs: List[str]) -> str:
+def fetch_pmids_by_pubtator3drug(gene: str, drugs: list[str]) -> str:
+    """Fetch PMIDs from PubMed using pubtator3 annotations to narrow search space. Supplement with drug annotations"""
     # Load Gene Pubtator3 Reference Set
     gene_reference = pd.read_csv('data/pubtator/gene2pubtator3', sep='\t', header=None)
     gene_reference.columns = ['PMID', 'EntityType', 'GeneID', 'MentionText', 'Source']
-    print('Gene Pubtator3 set loaded!')
+    print('Gene Pubtator3 set loaded!') # noqa: T201 (progress marker)
 
     # Load Chemical Pubtator3 Reference Set
     chemical_reference = pd.read_csv('data/pubtator/chemical2pubtator3', sep='\t', header=None)
@@ -137,7 +142,7 @@ def fetch_pmids_by_pubtator3drug(gene: str, drugs: List[str]) -> str:
     chemical_reference['MentionText'] = chemical_reference['MentionText'].apply(
     lambda x: x.lower() if isinstance(x, str) else ''
 )
-    print('Drug Pubtator3 set loaded!')
+    print('Drug Pubtator3 set loaded!') # noqa: T201 (progress marker)
 
     # Grab PMIDs from Pubtator3 using Reference Set
     gene_hits = gene_reference[gene_reference['MentionText'].str.contains(gene, na=False)].reset_index(drop=True)
@@ -151,12 +156,12 @@ def fetch_pmids_by_pubtator3drug(gene: str, drugs: List[str]) -> str:
         merged_hits = merged_hits.drop_duplicates(subset='PMID', keep='first').reset_index(drop=True)
 
         pmids = list(merged_hits['PMID'])
-        pmids = [str(pmid) for pmid in pmids]   
+        pmids = [str(pmid) for pmid in pmids]
 
         pmid_dict[drug] = pmids
 
     # Clean up large variables
     del gene_reference, chemical_reference
-    gc.collect() 
+    gc.collect()
 
     return pmid_dict

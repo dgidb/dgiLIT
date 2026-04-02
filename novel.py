@@ -1,10 +1,10 @@
+"""Support NER tagging of corpuses using huggingface biobert model"""
 # Imports & NLP Code
-import pandas as pd
-from transformers import pipeline
+import inflect
 import pandas as pd
 import requests
 from tqdm import tqdm
-import inflect  
+from transformers import pipeline
 
 PIPE_GENE = pipeline("token-classification", model="alvaroalon2/biobert_genetic_ner", aggregation_strategy="first")
 
@@ -13,16 +13,17 @@ PIPE_CHEMICAL = pipeline("token-classification", model="alvaroalon2/biobert_chem
 PIPE_DISEASE = pipeline("token-classification", model="alvaroalon2/biobert_diseases_ner", aggregation_strategy="first")
 
 
-def process_text(text):    
+def process_text(text: str) -> pd.DataFrame:
+    """Run all three NER tagging pipelines across a single entry"""
     tdf1 = _tag_genes(text)
     tdf2 = _tag_chemicals(text)
     tdf3 = _tag_diseases(text)
     df = pd.concat([tdf1,tdf2,tdf3])
     df = _drop_unknowns(df)
-    df = normalize(df)
-    return df
+    return normalize(df)
 
-def batch(corpus):
+def batch(corpus: list[str]) -> pd.DataFrame:
+    """Run all three NER tagging pipelines across a dataframe"""
     df = pd.DataFrame()
     for entry in tqdm(corpus):
         tdf1 = _tag_genes(entry)
@@ -35,7 +36,8 @@ def batch(corpus):
     # df = normalize(df)
     return df
 
-def normalize(result):
+def normalize(result: str) -> pd.DataFrame:
+    """Normalize entities using VICC normalizer suite"""
     result['concept_match_type'] = None
     result['concept_id'] = None
     result['concept_label'] = None
@@ -53,13 +55,13 @@ def normalize(result):
     return result
 
 
-def _singularize(word):
+def _singularize(word: str) -> str:
     inflector = inflect.engine()
     return inflector.singular_noun(word) or word
 
 # TODO: Implement cached queries to improve normalization time -- Brian Walsh/ Kori / James
-def _normalize_gene(word):
-    r = requests.get(f'https://normalize.cancervariants.org/gene/normalize?q={word}')
+def _normalize_gene(word: str) -> list[str]:
+    r = requests.get(f'https://normalize.cancervariants.org/gene/normalize?q={word}', timeout=20)
     response = r.json()
     try:
         if response['match_type'] != 0:
@@ -70,15 +72,15 @@ def _normalize_gene(word):
             match_type = response['match_type']
             concept_id = None
             label = None
-    except:
+    except (KeyError, TypeError):
         match_type = 'Failure to Normalize'
         concept_id = 'Failure to Normalize'
         label = 'Failure to Normalize'
 
     return [match_type, concept_id, label]
 
-def _normalize_disease(word):
-    r = requests.get(f'https://normalize.cancervariants.org/disease/normalize?q={word}')
+def _normalize_disease(word:str) -> list[str]:
+    r = requests.get(f'https://normalize.cancervariants.org/disease/normalize?q={word}', timeout=20)
     response = r.json()
     try:
         if response['match_type'] != 0:
@@ -89,15 +91,15 @@ def _normalize_disease(word):
             match_type = response['match_type']
             concept_id = None
             label = None
-    except:
+    except (KeyError, TypeError):
         match_type = 'Failure to Normalize'
         concept_id = 'Failure to Normalize'
         label = 'Failure to Normalize'
 
     return [match_type, concept_id, label]
 
-def _normalize_therapy(word):
-    r = requests.get(f'https://normalize.cancervariants.org/therapy/normalize?q={word}&infer_namespace=true')
+def _normalize_therapy(word: str) -> list[str]:
+    r = requests.get(f'https://normalize.cancervariants.org/therapy/normalize?q={word}&infer_namespace=true', timeout=20)
     response = r.json()
     try:
         if response['match_type'] != 0:
@@ -108,7 +110,7 @@ def _normalize_therapy(word):
             match_type = response['match_type']
             concept_id = None
             label = None
-    except:
+    except (KeyError, TypeError):
         match_type = 'Failure to Normalize'
         concept_id = 'Failure to Normalize'
         label = 'Failure to Normalize'
@@ -116,26 +118,26 @@ def _normalize_therapy(word):
     return [match_type, concept_id, label]
 
 
-def _drop_unknowns(result):
+def _drop_unknowns(result: pd.DataFrame) -> pd.DataFrame:
     try:
         dropped = result[result['entity_group']!='0'].reset_index(drop=True)
-    except:
+    except KeyError:
         dropped = result
     return dropped
 
-def _tag_genes(text):
+def _tag_genes(text: str) -> pd.DataFrame:
     gene_results = PIPE_GENE(text)
     df = _drop_unknowns(pd.DataFrame(gene_results))
     df['original_text'] = text
     return df
 
-def _tag_chemicals(text):
+def _tag_chemicals(text: str) -> pd.DataFrame:
     chem_results = PIPE_CHEMICAL(text)
     df = _drop_unknowns(pd.DataFrame(chem_results))
     df['original_text'] = text
     return df
 
-def _tag_diseases(text):
+def _tag_diseases(text: str) -> pd.DataFrame:
     disease_results = PIPE_DISEASE(text)
     df = _drop_unknowns(pd.DataFrame(disease_results))
     df['original_text'] = text
