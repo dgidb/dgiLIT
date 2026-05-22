@@ -2,12 +2,15 @@
 import gc
 import logging
 import time
+from pathlib import Path
 
 import pandas as pd
 import requests
 from defusedxml import ElementTree as ET  # noqa: N817
 from requests.exceptions import ChunkedEncodingError, RequestException
 from tqdm import tqdm
+
+RESEARCH_DIR = Path(__file__).resolve().parent / "research"
 
 logger = logging.getLogger(__name__)
 
@@ -111,7 +114,7 @@ def fetch_pmids_by_ncbi_gene_id(term: str) -> str:
 def fetch_pmids_by_pubtator3(term: str) -> str:
     """Fetch PMIDs from PubMed using pubtator3 annotations to narrow search space"""
     # Load Gene Pubtator3 Reference Set
-    gene_reference = pd.read_csv('data/pubtator/gene2pubtator3', sep='\t', header=None)
+    gene_reference = pd.read_csv(RESEARCH_DIR / "data" / "pubtator" / "gene2pubtator3", sep='\t', header=None)
     gene_reference.columns = ['PMID', 'EntityType', 'GeneID', 'MentionText', 'Source']
     print('Gene Pubtator3 set loaded!') # noqa: T201 (progress marker)
 
@@ -132,12 +135,12 @@ def fetch_pmids_by_pubtator3(term: str) -> str:
 def fetch_pmids_by_pubtator3drug(gene: str, drugs: list[str]) -> str:
     """Fetch PMIDs from PubMed using pubtator3 annotations to narrow search space. Supplement with drug annotations"""
     # Load Gene Pubtator3 Reference Set
-    gene_reference = pd.read_csv('data/pubtator/gene2pubtator3', sep='\t', header=None)
+    gene_reference = pd.read_csv(RESEARCH_DIR / "data" / "pubtator" / "gene2pubtator3", sep='\t', header=None)
     gene_reference.columns = ['PMID', 'EntityType', 'GeneID', 'MentionText', 'Source']
     print('Gene Pubtator3 set loaded!') # noqa: T201 (progress marker)
 
     # Load Chemical Pubtator3 Reference Set
-    chemical_reference = pd.read_csv('data/pubtator/chemical2pubtator3', sep='\t', header=None)
+    chemical_reference = pd.read_csv(RESEARCH_DIR / "data" / "pubtator" / "chemical2pubtator3", sep='\t', header=None)
     chemical_reference.columns = ['PMID', 'EntityType', 'ChemicalID', 'MentionText', 'Source']
     chemical_reference['MentionText'] = chemical_reference['MentionText'].apply(
     lambda x: x.lower() if isinstance(x, str) else ''

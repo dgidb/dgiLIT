@@ -11,6 +11,8 @@ import pandas as pd
 import spacy
 from tqdm import tqdm
 
+RESEARCH_DIR = Path(__file__).resolve().parent / "research"
+
 logger = logging.getLogger(__name__)
 
 
@@ -134,8 +136,8 @@ def generate_interaction_evidence(abstracts: pd.DataFrame , reference_df: pd.Dat
     """Generate drug-gene interaction indicators from abstracts and save results to disk."""
     gene = reference_df['Gene'][0] # TODO: can remove??? just using for filename
 
-    timestamp = datetime.now(tz='utc').strftime("%Y-%m-%d")
-    timestamp_folder = f'{timestamp}_{gene}'
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    timestamp_folder = RESEARCH_DIR / "search" / f"{timestamp}_{gene}"
 
     results = []
     for _, row in tqdm(abstracts.iloc[start:stop].iterrows(), desc="Abstracts", leave=False):
@@ -148,16 +150,22 @@ def generate_interaction_evidence(abstracts: pd.DataFrame , reference_df: pd.Dat
 
         results.append({"pmid": pmid, 'abstract': abstract, "label": label, "scores": scores, 'tagged_drugs': tagged_drugs, 'concepts': concept  })
 
-    Path(timestamp_folder).mkdir(parents=True, exist_ok=True)
+    timestamp_folder.mkdir(parents=True, exist_ok=True)
     out_filename = f'{gene}_interaction_search.csv'.replace("/", "-")
-    out_path = Path(timestamp_folder) / out_filename
+    out_path = timestamp_folder / out_filename
     with out_path.open("w", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=["pmid",'abstract', "label", "scores", 'tagged_drugs', 'concepts'])
         writer.writeheader()
         writer.writerows(results)
 
+    zip_path = shutil.make_archive(
+        str(timestamp_folder),
+        'zip',
+        root_dir=timestamp_folder
+    )
     shutil.rmtree(timestamp_folder)
-    print(f'Results saved to {timestamp_folder}.zip!') # noqa: T201
+
+    print(f'Results saved to {zip_path}!') # noqa: T201
 
 
 
@@ -166,7 +174,7 @@ def generate_indicators(abstracts: pd.DataFrame, reference_df: pd.DataFrame, sta
     gene = reference_df['Gene'][0]
 
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d")
-    timestamp_folder = f'{timestamp}_{gene}'
+    timestamp_folder = RESEARCH_DIR / "search" / f"{timestamp}_{gene}"
 
     for _idx, row in tqdm(reference_df.iterrows()):
         gene = str(row.get('Gene'))
@@ -195,9 +203,9 @@ def generate_indicators(abstracts: pd.DataFrame, reference_df: pd.DataFrame, sta
                 results.append({"pmid": pmid, "label": label, "scores": scores })
 
             if results:
-                Path(timestamp_folder).mkdir(parents=True, exist_ok=True)
+                timestamp_folder.mkdir(parents=True, exist_ok=True)
                 out_filename = f'{gene}_{drug[0]}.csv'.replace("/", "-")
-                out_path = Path(timestamp_folder) / out_filename
+                out_path = timestamp_folder / out_filename
                 with out_path.open("w", newline="") as fh:
                     if label:
                         writer = csv.DictWriter(fh, fieldnames=["pmid", "label", "scores", 'tagged_drugs', 'concepts'])
@@ -206,6 +214,12 @@ def generate_indicators(abstracts: pd.DataFrame, reference_df: pd.DataFrame, sta
                     writer.writeheader()
                     writer.writerows(results)
 
+    zip_path = shutil.make_archive(
+        str(timestamp_folder),
+        'zip',
+        root_dir=timestamp_folder
+    )
     shutil.rmtree(timestamp_folder)
-    print(f'Results saved to {timestamp_folder}.zip!') # noqa: T201
+
+    print(f'Results saved to {zip_path}!') # noqa: T201
 
