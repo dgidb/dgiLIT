@@ -1,5 +1,7 @@
 research/data/*
+research/outputs/*
 research/search/*
 research/*.zip
 analysis-runs-do-not-commit/*
 .DS_Store
+__pycache__/*
