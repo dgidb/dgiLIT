@@ -9,25 +9,17 @@ from pydantic import BaseModel, ConfigDict, Field
 from wags_llm.prompts import BasePromptTemplate
 
 
-class ExtractedInteraction(BaseModel):
-    """One extracted drug-gene interaction from a text block."""
+class InteractionClassificationResult(BaseModel):
+    """LLM result for classifying one candidate drug-gene pair."""
 
     model_config = ConfigDict(extra="forbid", use_enum_values=True)
 
     drug: str
     gene: str
-    interaction: bool = True
+    interaction: bool
     evidence: str | None = None
     interaction_type: str | None = None
     directionality: str | None = None
-
-
-class InteractionExtractionResult(BaseModel):
-    """LLM result for extracting zero, one, or many interactions from context."""
-
-    model_config = ConfigDict(extra="forbid", use_enum_values=True)
-
-    interactions: list[ExtractedInteraction] = Field(default_factory=list)
     error_message: str | None = None
 
 
@@ -37,12 +29,12 @@ class RunResult:
     pass
 
 
-PROMPT_NAME = "dgilit_interaction_identification"
+PROMPT_NAME = "dgilit_interaction_classification"
 
 
 @dataclass
-class InteractionExtractionPrompt(BasePromptTemplate):
-    """Prompt for identifying drug-gene interactions from biomedical text."""
+class InteractionClassificationPrompt(BasePromptTemplate):
+    """Prompt for classifying whether one drug-gene pair is supported by text."""
 
     name = PROMPT_NAME
     PROMPT_DIR = Path(__file__).parent / "dgilit_prompts"
@@ -68,14 +60,11 @@ class InteractionExtractionPrompt(BasePromptTemplate):
         return self.prompt_path.read_text()
 
     def build_user_prompt(self, payload: Mapping[str, Any]) -> str:
-        candidate_drugs = payload.get("candidate_drugs", [])
-        candidate_genes = payload.get("candidate_genes", [])
-
         return (
-            "Candidate drugs:\n"
-            f"{self._format_candidates(candidate_drugs)}\n\n"
-            "Candidate genes:\n"
-            f"{self._format_candidates(candidate_genes)}\n\n"
+            "Candidate Drug:\n"
+            f"{payload['candidate_drug']}\n\n"
+            "Candidate Gene:\n"
+            f"{payload['candidate_gene']}\n\n"
             "Context:\n"
             f"{payload['context']}\n"
         )
@@ -83,18 +72,11 @@ class InteractionExtractionPrompt(BasePromptTemplate):
     def build_payload(
         self,
         context: str,
-        candidate_drugs: list[str] | None = None,
-        candidate_genes: list[str] | None = None,
+        candidate_drug: str,
+        candidate_gene: str,
     ) -> dict[str, Any]:
         return {
             "context": context,
-            "candidate_drugs": candidate_drugs or [],
-            "candidate_genes": candidate_genes or [],
+            "candidate_drug": candidate_drug,
+            "candidate_gene": candidate_gene,
         }
-
-    @staticmethod
-    def _format_candidates(candidates: list[str]) -> str:
-        if not candidates:
-            return "- None identified"
-
-        return "\n".join(f"- {candidate}" for candidate in candidates)
