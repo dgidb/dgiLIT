@@ -7,8 +7,8 @@ from pathlib import Path
 import pandas as pd
 import requests
 
-ALLOWED_TYPES = {"inhibitor", "activator"}
-INTERACTION_COLUMNS = ["pmid", "drug_name", "gene_name", "interaction_type"]
+INTERACTION_COLUMNS = ["pmid", "drug_name", "gene_name"]
+MISSING_VALUES = {"", "NULL", "NA", "N/A", "NONE", "NAN"}
 
 
 def clean_value(value: object) -> str:
@@ -16,7 +16,7 @@ def clean_value(value: object) -> str:
     if value is None or pd.isna(value):
         return ""
     text = str(value).strip()
-    return "" if text.upper() in {"", "NULL", "NA", "N/A", "NONE", "NAN"} else text
+    return "" if text.upper() in MISSING_VALUES else text
 
 
 def collapse_ws(value: object) -> str:
@@ -26,8 +26,7 @@ def collapse_ws(value: object) -> str:
 
 def norm_text(value: object) -> str:
     """Normalize text for case-insensitive exact matching."""
-    text = clean_value(value).lower()
-    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9]+", " ", text)).strip()
+    return collapse_ws(re.sub(r"[^a-z0-9]+", " ", clean_value(value).lower()))
 
 
 def norm_gene(value: object) -> str:
@@ -35,22 +34,17 @@ def norm_gene(value: object) -> str:
     return re.sub(r"[^A-Za-z0-9]+", "", clean_value(value)).upper()
 
 
-def trueish(value: object) -> bool:
-    """Return whether a value is a truth-like string."""
-    return norm_text(value) in {"1", "true", "yes", "y"}
+def _column_key(value: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", value.lower()).strip("_")
 
 
 def find_col(df: pd.DataFrame, candidates: list[str]) -> str:
     """Find a column by matching normalized candidate names."""
-    normalized = {
-        re.sub(r"[^a-z0-9]+", "_", c.lower()).strip("_"): c for c in df.columns
-    }
+    normalized = {_column_key(column): column for column in df.columns}
     for name in candidates:
-        key = re.sub(r"[^a-z0-9]+", "_", name.lower()).strip("_")
-        if key in normalized:
-            return normalized[key]
-    message = f"Missing one of {candidates}; found {list(df.columns)}"
-    raise ValueError(message)
+        if column := normalized.get(_column_key(name)):
+            return column
+    raise ValueError(f"Missing one of {candidates}; found {list(df.columns)}")
 
 
 def read_table(source: str | Path, sep: str = "\t") -> pd.DataFrame:
@@ -78,6 +72,7 @@ def read_cached_table(
     cache_path = Path(cache_path)
     if use_cache and cache_path.exists() and not refresh:
         return pd.read_csv(cache_path, sep=sep, dtype=str, keep_default_na=False)
+
     df = read_table(source, sep=sep)
     if use_cache:
         cache_path.parent.mkdir(parents=True, exist_ok=True)

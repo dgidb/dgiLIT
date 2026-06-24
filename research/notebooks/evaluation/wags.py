@@ -5,28 +5,22 @@ import logging
 import time
 from collections.abc import Iterable, Mapping
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict
 from utils import clean_value, collapse_ws
-from wags_llm.cache import InMemoryCache
-from wags_llm.client import BedrockClaudeJsonClient
-from wags_llm.prompts import BasePromptTemplate, PromptRegistry
-from wags_llm.services import StructuredTaskRunner
 
 logger = logging.getLogger(__name__)
 
 
 class ExtractedInteraction(BaseModel):
-    """One extracted inhibitor or activator interaction."""
+    """One extracted drug-gene pair."""
 
     model_config = ConfigDict(extra="forbid")
 
-    pmid: str
     drug_name: str
     gene_name: str
-    interaction_type: Literal["inhibitor", "activator"]
 
 
 class InteractionExtractionResponse(BaseModel):
@@ -37,34 +31,44 @@ class InteractionExtractionResponse(BaseModel):
     interactions: list[ExtractedInteraction]
 
 
-def make_prompt_template(prompt_name: str, prompt_version: str) -> BasePromptTemplate:
+def make_prompt_template(prompt_name: str, prompt_version: str) -> Any:
     """Build a WAGS prompt template for PubMed extraction tasks."""
+    from wags_llm.prompts import BasePromptTemplate
 
     class Prompt(BasePromptTemplate):
         name = prompt_name
         version = prompt_version
 
         def build_system_prompt(self) -> str:
-            return "Extract inhibitor or activator drug-gene interactions from the supplied PubMed title and abstract. Return only JSON matching the schema."
+            return (
+                "Extract drug-gene interaction pairs from the supplied PubMed title "
+                "and abstract. Return only JSON matching the schema."
+            )
 
         def build_user_prompt(self, payload: Mapping[str, Any]) -> str:
-            return f"""
-Return {{"interactions": []}} if no explicitly supported inhibitor or activator drug-gene interaction is present.
-Each interaction must include pmid, drug_name, gene_name, and interaction_type, where interaction_type is exactly "inhibitor" or "activator".
-Do not infer interactions from pathway context alone.
-
-PMID: {clean_value(payload.get("pmid"))}
-Article title: {collapse_ws(payload.get("article_title", ""))}
-
-Abstract:
-{str(payload.get("abstract") or "").strip()}
-""".strip()
+            lines = [
+                "Return {\"interactions\": []} if no drug-gene interaction pair is "
+                "mentioned or supported by the abstract.",
+                "Each interaction object must include only drug_name and gene_name.",
+                "Use the drug and gene names as written in the title or abstract "
+                "when possible.",
+                "Do not infer interactions from pathway context alone.",
+                "",
+                f"PMID: {clean_value(payload.get('pmid'))}",
+                f"Article title: {collapse_ws(payload.get('article_title', ''))}",
+                "",
+                "Abstract:",
+                str(payload.get("abstract") or "").strip(),
+            ]
+            return "\n".join(lines).strip()
 
     return Prompt()
 
 
-def make_prompt_registry(prompt_name: str, prompt_version: str) -> PromptRegistry:
+def make_prompt_registry(prompt_name: str, prompt_version: str) -> Any:
     """Register and return the evaluation prompt template."""
+    from wags_llm.prompts import PromptRegistry
+
     registry = PromptRegistry()
     registry.register(make_prompt_template(prompt_name, prompt_version))
     return registry
@@ -76,8 +80,10 @@ def initialize_wags_client(
     aws_profile_name: str,
     max_tokens: int,
     temperature: float,
-) -> BedrockClaudeJsonClient:
+) -> Any:
     """Create the Bedrock-backed WAGS JSON client."""
+    from wags_llm.client import BedrockClaudeJsonClient
+
     return BedrockClaudeJsonClient(
         model_id=model_id,
         region_name=bedrock_region,
@@ -88,11 +94,14 @@ def initialize_wags_client(
 
 
 def make_wags_runner(
-    client: BedrockClaudeJsonClient,
-    prompt_registry: PromptRegistry,
+    client: Any,
+    prompt_registry: Any,
     cache_max_entries: int,
-) -> StructuredTaskRunner:
+) -> Any:
     """Create a structured WAGS task runner with an in-memory cache."""
+    from wags_llm.cache import InMemoryCache
+    from wags_llm.services import StructuredTaskRunner
+
     cache = InMemoryCache(max_entries=cache_max_entries)
     return StructuredTaskRunner(
         client=client, prompt_registry=prompt_registry, cache=cache
@@ -100,7 +109,7 @@ def make_wags_runner(
 
 
 def execute_wags_task(
-    runner: StructuredTaskRunner,
+    runner: Any,
     payload: Mapping[str, Any],
     prompt_name: str,
     prompt_version: str,
@@ -116,21 +125,22 @@ def execute_wags_task(
 
 
 def interaction_rows(
-    response: InteractionExtractionResponse, allowed_pmids: Iterable[str]
+    response: InteractionExtractionResponse, pmid: str
 ) -> list[dict[str, str]]:
     """Convert a structured WAGS response into filtered interaction rows."""
-    allowed = {str(pmid).strip() for pmid in allowed_pmids}
     rows = []
+    seen = set()
+    pmid = clean_value(pmid)
     for item in response.interactions:
-        row = item.model_dump()
         row = {
-            "pmid": clean_value(row["pmid"]),
-            "drug_name": clean_value(row["drug_name"]),
-            "gene_name": clean_value(row["gene_name"]),
-            "interaction_type": clean_value(row["interaction_type"]).lower(),
+            "pmid": pmid,
+            "drug_name": clean_value(item.drug_name),
+            "gene_name": clean_value(item.gene_name),
         }
-        if row["pmid"] in allowed and row["drug_name"] and row["gene_name"]:
+        key = tuple(row.values())
+        if all(row.values()) and key not in seen:
             rows.append(row)
+            seen.add(key)
     return rows
 
 
@@ -171,6 +181,17 @@ def prediction_status_frame(predictions: dict[str, Any]) -> pd.DataFrame:
     )
 
 
+def _prediction_metadata(
+    model_key: str, model_id: str, prompt_name: str, prompt_version: str
+) -> dict[str, str]:
+    return {
+        "model_key": model_key,
+        "model_id": model_id,
+        "prompt_name": prompt_name,
+        "prompt_version": prompt_version,
+    }
+
+
 def run_wags_predictions(
     payloads: list[dict[str, str]],
     predictions_path: str | Path,
@@ -208,9 +229,12 @@ def run_wags_predictions(
     )
     registry = make_prompt_registry(prompt_name, prompt_version)
     runner = make_wags_runner(client, registry, cache_max_entries)
+    metadata = _prediction_metadata(model_key, model_id, prompt_name, prompt_version)
 
     for index, payload in enumerate(payloads, start=1):
-        pmid = str(payload["pmid"])
+        pmid = clean_value(payload["pmid"])
+        if pmid not in allowed:
+            continue
         if (
             pmid in predictions
             and "interactions" in predictions[pmid]
@@ -223,26 +247,19 @@ def run_wags_predictions(
             continue
         if progress:
             logger.info("Running WAGS prediction %s of %s", index, len(payloads))
+
         try:
             parsed = execute_wags_task(runner, payload, prompt_name, prompt_version)
             predictions[pmid] = {
-                "model_key": model_key,
-                "model_id": model_id,
-                "prompt_name": prompt_name,
-                "prompt_version": prompt_version,
-                "interactions": interaction_rows(parsed, allowed),
+                **metadata,
+                "interactions": interaction_rows(parsed, pmid),
             }
         except Exception as exc:
-            predictions[pmid] = {
-                "model_key": model_key,
-                "model_id": model_id,
-                "prompt_name": prompt_name,
-                "prompt_version": prompt_version,
-                "error": str(exc),
-            }
+            predictions[pmid] = {**metadata, "error": str(exc)}
             logger.exception("WAGS prediction failed for PMID %s", pmid)
             if stop_on_error:
                 raise
+
         save_predictions(predictions, predictions_path)
         if request_sleep_seconds:
             time.sleep(request_sleep_seconds)
@@ -251,8 +268,8 @@ def run_wags_predictions(
 
 def raw_audit_wags_response(
     payload: Mapping[str, Any],
-    client: BedrockClaudeJsonClient,
-    prompt_registry: PromptRegistry,
+    client: Any,
+    prompt_registry: Any,
     prompt_name: str,
     prompt_version: str,
 ) -> dict[str, Any]:
@@ -264,9 +281,10 @@ def raw_audit_wags_response(
         json_schema=InteractionExtractionResponse.model_json_schema(),
     )
     parsed = InteractionExtractionResponse.model_validate(response.parsed_json)
+    pmid = str(payload.get("pmid", ""))
     return {
-        "pmid": str(payload.get("pmid", "")),
+        "pmid": pmid,
         "raw_response": response.raw_text,
         "parsed_json": response.parsed_json,
-        "interactions": interaction_rows(parsed, {str(payload.get("pmid", ""))}),
+        "interactions": interaction_rows(parsed, pmid),
     }
