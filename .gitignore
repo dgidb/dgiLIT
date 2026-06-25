@@ -5,3 +5,5 @@ research/*.zip
 analysis-runs-do-not-commit/*
 .DS_Store
 __pycache__/*
+research/notebooks/evaluation/outputs/*
+research/notebooks/evaluation/__pycache__/*
