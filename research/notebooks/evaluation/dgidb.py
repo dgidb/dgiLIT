@@ -316,12 +316,13 @@ def load_cached_dgidb_source(
     max_graphql_pages: int | None = None,
     gene_names: Iterable[str] | None = None,
     progress: bool = False,
+    return_source: bool = False,
 ) -> pd.DataFrame:
     """Load cached DGIdb source rows or rebuild them from DGIdb GraphQL."""
     source_cache_path = Path(source_cache_path)
     if use_cache and source_cache_path.exists() and not refresh:
         source = pd.read_csv(source_cache_path, dtype=str, keep_default_na=False)
-        return candidate_pair_frame(source)
+        return source if return_source else candidate_pair_frame(source)
 
     source = fetch_publication_interactions(
         graphql_url=graphql_url,
@@ -334,4 +335,4 @@ def load_cached_dgidb_source(
     if use_cache:
         source_cache_path.parent.mkdir(parents=True, exist_ok=True)
         source.to_csv(source_cache_path, index=False)
-    return candidate_pair_frame(source)
+    return source if return_source else candidate_pair_frame(source)
