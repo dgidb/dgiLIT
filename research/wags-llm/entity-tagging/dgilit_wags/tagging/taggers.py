@@ -39,7 +39,11 @@ class BioBertEntityTagger:
         self.config = config or TaggerConfig()
         self._pipelines = {}
 
-    def tag_texts(self, texts: list[Any]) -> list[list[EntityMention]]:
+    def tag_texts(
+        self,
+        texts: list[Any],
+        pmids: list[Any] | None = None,
+    ) -> list[list[EntityMention]]:
         """Return entity mentions for each input text, preserving input order.
 
         Blank or invalid inputs return an empty mention list. This avoids the
@@ -56,8 +60,8 @@ class BioBertEntityTagger:
         for entity_type in self._enabled_types():
             pipe = self._get_pipeline(entity_type)
             for offset in tqdm(
-                range(0, len(texts), self.config.batch_size),
-                total=(len(texts) + self.config.batch_size - 1) // self.config.batch_size,
+                range(0, len(valid_items), self.config.batch_size),
+                total=(len(valid_items) + self.config.batch_size - 1) // self.config.batch_size,
                 desc="Tagging text batches",
             ):                
                 batch_items = valid_items[offset : offset + self.config.batch_size]
@@ -80,8 +84,8 @@ class BioBertEntityTagger:
                     )
         return mentions_by_text
 
-    def tag_text(self, text: str) -> list[EntityMention]:
-        return self.tag_texts([text])[0]
+    def tag_text(self, text: str, pmid: Any | None = None) -> list[EntityMention]:
+        return self.tag_texts([text], pmids=[pmid] if pmid is not None else None)[0]
 
     def _enabled_types(self) -> Iterable[EntityType]:
         if self.config.include_drugs:
@@ -147,3 +151,179 @@ def _coerce_text(value: Any) -> str:
     except Exception:
         pass
     return str(value)
+
+from collections import defaultdict
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+from .models import EntityMention
+
+
+@dataclass(frozen=True)
+class PubTatorChemicalMention:
+    pmid: str
+    text: str
+    concept_id: str | None = None
+
+
+class PubTator3ChemicalTagger:
+    """Tag drug candidates from precomputed PubTator3 chemical annotations.
+
+    This is intended as an additive candidate source, not a replacement for
+    BioBERT. It returns EntityMention objects with entity_type='drug'.
+    """
+
+    def __init__(
+        self,
+        chemicals_by_pmid: dict[str, list[PubTatorChemicalMention]],
+        *,
+        source: str = "pubtator3:chemical",
+        case_sensitive: bool = False,
+    ) -> None:
+        self.chemicals_by_pmid = chemicals_by_pmid
+        self.source = source
+        self.case_sensitive = case_sensitive
+
+    def tag_texts(
+        self,
+        texts: list[Any],
+        pmids: list[Any] | None = None,
+    ) -> list[list[EntityMention]]:
+        """Return PubTator3 chemical mentions for each input text.
+
+        `pmids` is optional for API compatibility, but PubTator3 matching needs
+        PMID context. If omitted, all outputs are empty.
+        """
+        if pmids is None:
+            return [[] for _ in texts]
+
+        mentions_by_text: list[list[EntityMention]] = []
+
+        for text_value, pmid_value in zip(texts, pmids, strict=False):
+            text = _coerce_text(text_value)
+            pmid = str(pmid_value) if pmid_value is not None else ""
+
+            if not text.strip() or not pmid:
+                mentions_by_text.append([])
+                continue
+
+            mentions_by_text.append(self._tag_text_for_pmid(text, pmid))
+
+        # Preserve length even if pmids was shorter than texts.
+        while len(mentions_by_text) < len(texts):
+            mentions_by_text.append([])
+
+        return mentions_by_text
+
+    def tag_text(self, text: str, pmid: str | None = None) -> list[EntityMention]:
+        if pmid is None:
+            return []
+        return self.tag_texts([text], [pmid])[0]
+
+    def _tag_text_for_pmid(self, text: str, pmid: str) -> list[EntityMention]:
+        candidates = self.chemicals_by_pmid.get(str(pmid), [])
+        if not candidates:
+            return []
+
+        search_text = text if self.case_sensitive else text.lower()
+        converted: list[EntityMention] = []
+        seen: set[tuple[str, int, int]] = set()
+
+        for candidate in candidates:
+            mention_text = candidate.text.strip()
+            if not mention_text:
+                continue
+
+            needle = mention_text if self.case_sensitive else mention_text.lower()
+            start = 0
+
+            while True:
+                idx = search_text.find(needle, start)
+                if idx == -1:
+                    break
+
+                end = idx + len(mention_text)
+                key = (mention_text.lower(), idx, end)
+
+                if key not in seen:
+                    seen.add(key)
+                    converted.append(
+                        EntityMention(
+                            text=text[idx:end],
+                            entity_type="drug",
+                            start=idx,
+                            end=end,
+                            score=None,
+                            source=self.source,
+                        )
+                    )
+
+                start = end
+
+        return converted
+
+    @classmethod
+    def from_pubtator_file(cls, path: str | Path) -> "PubTator3ChemicalTagger":
+        """Load PubTator-style chemical annotations.
+
+        Expected annotation rows resemble:
+            PMID<TAB>start<TAB>end<TAB>mention<TAB>Chemical<TAB>identifier
+
+        Non-chemical rows and title/abstract rows are ignored.
+        """
+        chemicals_by_pmid: dict[str, list[PubTatorChemicalMention]] = defaultdict(list)
+
+        with Path(path).open() as handle:
+            for line in handle:
+                line = line.rstrip("\n")
+                if not line or "|t|" in line or "|a|" in line:
+                    continue
+
+                parts = line.split("\t")
+                if len(parts) < 6:
+                    continue
+
+                pmid, _start, _end, mention, entity_type, concept_id = parts[:6]
+
+                if entity_type.lower() != "chemical":
+                    continue
+
+                chemicals_by_pmid[pmid].append(
+                    PubTatorChemicalMention(
+                        pmid=pmid,
+                        text=mention,
+                        concept_id=concept_id or None,
+                    )
+                )
+
+        return cls(dict(chemicals_by_pmid))
+    
+class CompositeEntityTagger:
+    def __init__(self, *taggers):
+        self.taggers = taggers
+
+    def tag_texts(
+        self,
+        texts: list[Any],
+        pmids: list[Any] | None = None,
+    ) -> list[list[EntityMention]]:
+        results: list[list[EntityMention]] = [[] for _ in texts]
+
+        for tagger in self.taggers:
+            tagged = tagger.tag_texts(texts, pmids=pmids)
+
+            for i, mentions in enumerate(tagged):
+                results[i].extend(mentions)
+
+        return results
+
+    def tag_text(
+        self,
+        text: Any,
+        pmid: Any | None = None,
+    ) -> list[EntityMention]:
+        return self.tag_texts(
+            [text],
+            pmids=[pmid] if pmid is not None else None,
+        )[0]
