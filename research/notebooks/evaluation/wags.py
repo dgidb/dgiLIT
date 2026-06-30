@@ -13,6 +13,14 @@ from utils import clean_value, collapse_ws
 
 logger = logging.getLogger(__name__)
 
+PROMPT_PMID_TOKEN = "{{PMID}}"
+PROMPT_TITLE_TOKEN = "{{ARTICLE_TITLE}}"
+PROMPT_ABSTRACT_TOKEN = "{{ABSTRACT}}"
+DEFAULT_SYSTEM_PROMPT = (
+    "Extract drug-gene interaction pairs from the supplied PubMed title "
+    "and abstract. Return only JSON matching the schema."
+)
+
 
 class ExtractedInteraction(BaseModel):
     """One extracted drug-gene pair."""
@@ -31,46 +39,81 @@ class InteractionExtractionResponse(BaseModel):
     interactions: list[ExtractedInteraction]
 
 
-def make_prompt_template(prompt_name: str, prompt_version: str) -> Any:
+def default_user_prompt_template() -> str:
+    """Return the default extraction prompt with payload placeholders."""
+    lines = [
+        "Return {\"interactions\": []} if no drug-gene interaction pair is "
+        "mentioned or supported by the abstract.",
+        "Each interaction object must include only drug_name and gene_name.",
+        "Use the drug and gene names as written in the title or abstract "
+        "when possible.",
+        "Do not infer interactions from pathway context alone.",
+        "",
+        f"PMID: {PROMPT_PMID_TOKEN}",
+        f"Article title: {PROMPT_TITLE_TOKEN}",
+        "",
+        "Abstract:",
+        PROMPT_ABSTRACT_TOKEN,
+    ]
+    return "\n".join(lines).strip()
+
+
+def render_prompt_template(
+    prompt_template: str,
+    payload: Mapping[str, Any],
+) -> str:
+    """Fill a prompt template with a PubMed task payload."""
+    return (
+        prompt_template.replace(PROMPT_PMID_TOKEN, clean_value(payload.get("pmid")))
+        .replace(PROMPT_TITLE_TOKEN, collapse_ws(payload.get("article_title", "")))
+        .replace(PROMPT_ABSTRACT_TOKEN, str(payload.get("abstract") or "").strip())
+        .strip()
+    )
+
+
+def make_prompt_template(
+    prompt_name: str,
+    prompt_version: str,
+    system_prompt: str | None = None,
+    user_prompt_template: str | None = None,
+) -> Any:
     """Build a WAGS prompt template for PubMed extraction tasks."""
     from wags_llm.prompts import BasePromptTemplate
+
+    system_prompt = system_prompt or DEFAULT_SYSTEM_PROMPT
+    user_prompt_template = user_prompt_template or default_user_prompt_template()
 
     class Prompt(BasePromptTemplate):
         name = prompt_name
         version = prompt_version
 
         def build_system_prompt(self) -> str:
-            return (
-                "Extract drug-gene interaction pairs from the supplied PubMed title "
-                "and abstract. Return only JSON matching the schema."
-            )
+            return system_prompt
 
         def build_user_prompt(self, payload: Mapping[str, Any]) -> str:
-            lines = [
-                "Return {\"interactions\": []} if no drug-gene interaction pair is "
-                "mentioned or supported by the abstract.",
-                "Each interaction object must include only drug_name and gene_name.",
-                "Use the drug and gene names as written in the title or abstract "
-                "when possible.",
-                "Do not infer interactions from pathway context alone.",
-                "",
-                f"PMID: {clean_value(payload.get('pmid'))}",
-                f"Article title: {collapse_ws(payload.get('article_title', ''))}",
-                "",
-                "Abstract:",
-                str(payload.get("abstract") or "").strip(),
-            ]
-            return "\n".join(lines).strip()
+            return render_prompt_template(user_prompt_template, payload)
 
     return Prompt()
 
 
-def make_prompt_registry(prompt_name: str, prompt_version: str) -> Any:
+def make_prompt_registry(
+    prompt_name: str,
+    prompt_version: str,
+    system_prompt: str | None = None,
+    user_prompt_template: str | None = None,
+) -> Any:
     """Register and return the evaluation prompt template."""
     from wags_llm.prompts import PromptRegistry
 
     registry = PromptRegistry()
-    registry.register(make_prompt_template(prompt_name, prompt_version))
+    registry.register(
+        make_prompt_template(
+            prompt_name,
+            prompt_version,
+            system_prompt=system_prompt,
+            user_prompt_template=user_prompt_template,
+        )
+    )
     return registry
 
 
@@ -210,6 +253,8 @@ def run_wags_predictions(
     request_sleep_seconds: float = 0.25,
     allowed_pmids: Iterable[str] | None = None,
     progress: bool = False,
+    system_prompt: str | None = None,
+    user_prompt_template: str | None = None,
 ) -> dict[str, Any]:
     """Run or resume WAGS predictions for task payloads."""
     predictions = load_predictions(predictions_path)
@@ -227,7 +272,12 @@ def run_wags_predictions(
     client = initialize_wags_client(
         model_id, bedrock_region, aws_profile_name, max_tokens, temperature
     )
-    registry = make_prompt_registry(prompt_name, prompt_version)
+    registry = make_prompt_registry(
+        prompt_name,
+        prompt_version,
+        system_prompt=system_prompt,
+        user_prompt_template=user_prompt_template,
+    )
     runner = make_wags_runner(client, registry, cache_max_entries)
     metadata = _prediction_metadata(model_key, model_id, prompt_name, prompt_version)
 
