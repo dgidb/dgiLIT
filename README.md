@@ -89,5 +89,5 @@ for entity in result.entities:
     print(entity)
 ```
 
-For complete end-to-end examples—including literature retrieval, prioritization, AI-assisted interaction classification, and evaluation workflows—see the notebooks in the `notebooks/` directory.
+For complete examples including literature retrieval, AI-assisted interaction classification, and evaluation workflows, see the notebooks in the `notebooks/` directory.
 
