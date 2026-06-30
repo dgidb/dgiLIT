@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: dgilit
+Version: 0.1.0
+Summary: AI-assisted literature prioritization and drug-gene interaction curation for DGIdb
+Author: Matthew Cannon
+License: MIT
+Requires-Python: >=3.13
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: polars
+Requires-Dist: pydantic
+Requires-Dist: tqdm
+Requires-Dist: wags-llm
+Dynamic: license-file
