@@ -43,7 +43,7 @@ class EntityPreTaggingService:
         pmids = [None if pmid is None else str(pmid) for pmid in pmids]
         block_ids = [None if block_id is None else str(block_id) for block_id in block_ids]
 
-        mentions_by_context = self.tagger.tag_texts(contexts)
+        mentions_by_context = self.tagger.tag_texts(contexts, pmids)
 
         unique_strings: set[tuple[str, str]] = set()
         for mentions in mentions_by_context:
