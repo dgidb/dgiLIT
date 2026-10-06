@@ -1,1 +1,13 @@
 .env
+# macOS
+.DS_Store
+
+# Python build/cache artifacts
+*.egg-info/
+__pycache__/
+*.py[cod]
+
+# Local SQLite databases (uncomment if you do not intend to version them)
+*.sqlite
+*.sqlite3
+*.db
