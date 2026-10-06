@@ -1,4 +1,0 @@
-polars
-pydantic
-tqdm
-wags-llm
