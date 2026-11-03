@@ -8,6 +8,7 @@ from .dgilit_models import (
     InteractionClassificationResult,
 )
 from .qwen import Qwen3JsonClient
+from .pmc import PMCClient, PMCArticle
 
 from .pubmed import (
     PubMedAbstract,
@@ -36,6 +37,8 @@ from .tagging import (
 __version__ = "0.1.0"
 
 __all__ = (
+    "PMCClient",
+    "PMCArticle",
     "Qwen3JsonClient",
     "BioBertEntityTagger",
     "CompositeEntityTagger",

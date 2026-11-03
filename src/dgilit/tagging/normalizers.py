@@ -83,7 +83,7 @@ class ViccNormalizer:
 
     def normalize(self, kind: NormalizerKind, query: str) -> NormalizedConcept:
         cached = self.cache.get(kind, query)
-        if cached is not None:
+        if cached is not None and not cached.get("error_message"):
             return self._parse_response(kind, cached)
 
         url = self._build_url(kind, query)
@@ -94,7 +94,9 @@ class ViccNormalizer:
         except Exception as exc:
             payload = {"error_message": str(exc), "match_type": "Failure to Normalize"}
 
-        self.cache.set(kind, query, payload)
+        # A transport failure is retryable; a successful no-match can be cached.
+        if not payload.get("error_message"):
+            self.cache.set(kind, query, payload)
         return self._parse_response(kind, payload)
 
     def normalize_many_unique(

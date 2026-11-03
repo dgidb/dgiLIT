@@ -24,6 +24,8 @@ class TaggerConfig:
     aggregation_strategy: str = "first"
     device: int = -1
     num_workers: int = 0
+    # Opt in without changing the historical notebook behavior.
+    long_text_overlap: int | None = None
 
 
 class BioBertEntityTagger:
@@ -59,6 +61,27 @@ class BioBertEntityTagger:
 
         for entity_type in self._enabled_types():
             pipe = self._get_pipeline(entity_type)
+            if self.config.long_text_overlap is not None:
+                from ..text_windows import text_windows
+                tokenizer = pipe.tokenizer
+                limit = min(tokenizer.model_max_length, pipe.model.config.max_position_embeddings)
+                budget = limit - tokenizer.num_special_tokens_to_add(pair=False)
+                windows = (
+                    (idx, start, text[start:end])
+                    for idx, text in valid_items
+                    for start, end in text_windows(tokenizer, text, budget, self.config.long_text_overlap)
+                )
+                import itertools
+                while batch := list(itertools.islice(windows, self.config.batch_size)):
+                    raw_batch = pipe([item[2] for item in batch], batch_size=self.config.batch_size,
+                                     num_workers=self.config.num_workers)
+                    for (idx, start, _), raw_mentions in zip(batch, raw_batch):
+                        for mention in self._convert_mentions(raw_mentions, entity_type):
+                            mention.start += start
+                            mention.end += start
+                            mention.text = clean_texts[idx][mention.start:mention.end]
+                            mentions_by_text[idx].append(mention)
+                continue
             for offset in tqdm(
                 range(0, len(valid_items), self.config.batch_size),
                 total=(len(valid_items) + self.config.batch_size - 1) // self.config.batch_size,
@@ -82,6 +105,8 @@ class BioBertEntityTagger:
                     mentions_by_text[original_idx].extend(
                         self._convert_mentions(raw_mentions, entity_type)
                     )
+        for idx, mentions in enumerate(mentions_by_text):
+            mentions_by_text[idx] = list({(m.entity_type, m.start, m.end): m for m in mentions}.values())
         return mentions_by_text
 
     def tag_text(self, text: str, pmid: Any | None = None) -> list[EntityMention]:

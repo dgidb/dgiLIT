@@ -64,13 +64,11 @@ class Qwen3JsonClient:
             raise ValueError("Qwen MLX requires a model with 4-bit quantized weights")
         self._context_window = config["max_position_embeddings"]
 
-    def invoke_json(
-        self,
-        system_prompt: str,
-        user_prompt: str,
-        json_schema: dict[str, Any] | None = None,
-    ) -> InvokeJsonResponse:
-        self.last_generation_stats = {}
+    def prompt_tokens(self, system_prompt, user_prompt, json_schema=None):
+        """Count the exact rendered input, including JSON/schema instructions."""
+        return len(self._prompt_tokens(system_prompt, user_prompt, json_schema))
+
+    def _prompt_tokens(self, system_prompt, user_prompt, json_schema=None):
         instructions = "\nReturn only a JSON object, without Markdown or explanation."
         if json_schema is not None:
             instructions += "\nFollow this JSON schema:\n" + json.dumps(json_schema)
@@ -78,12 +76,36 @@ class Qwen3JsonClient:
             {"role": "system", "content": system_prompt + instructions},
             {"role": "user", "content": user_prompt},
         ]
+        text = self._tokenizer.apply_chat_template(
+            messages, tokenize=False, add_generation_prompt=True, enable_thinking=False,
+        )
+        return self._tokenizer.encode(text, add_special_tokens=False)
+
+    def context_windows(self, prompt, context, drug, gene, schema, overlap=256):
+        """Return character bounds whose complete prompts fit the model window."""
+        from .text_windows import text_windows
+        def count(text):
+            payload = prompt.build_payload(text, drug, gene)
+            return self.prompt_tokens(prompt.build_system_prompt(), prompt.build_user_prompt(payload), schema)
+        if count(context) + self.max_tokens <= self._context_window:
+            return [(0, len(context))]
+        budget = self._context_window - self.max_tokens - count("") - 64
+        while budget > overlap:
+            windows = list(text_windows(self._tokenizer, context, budget, overlap))
+            if all(count(context[a:b]) + self.max_tokens <= self._context_window for a, b in windows):
+                return windows
+            budget -= max(64, budget // 10)
+        raise ValueError("Prompt overhead leaves no room for an overlapping context window")
+
+    def invoke_json(
+        self,
+        system_prompt: str,
+        user_prompt: str,
+        json_schema: dict[str, Any] | None = None,
+    ) -> InvokeJsonResponse:
+        self.last_generation_stats = {}
         try:
-            text = self._tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True,
-                enable_thinking=False,
-            )
-            tokens = self._tokenizer.encode(text, add_special_tokens=False)
+            tokens = self._prompt_tokens(system_prompt, user_prompt, json_schema)
             if len(tokens) + self.max_tokens > self._context_window:
                 raise ValueError("Prompt plus generation budget exceeds the model context window")
             started = perf_counter()
