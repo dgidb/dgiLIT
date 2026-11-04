@@ -3,12 +3,65 @@
 This workflow finds candidate drug–gene interactions in PMC papers published
 **November 3, 2016 through November 3, 2026**, inclusive. It uses PMC text
 retrieval, BioBERT entity recognition, VICC concept normalization, and local
-Qwen3-14B classification. The [notebook](01_pmc_interactions.ipynb) and CLI call
-the same Python pipeline and share the same checkpoints.
+Qwen3-14B classification. The **CLI owns all data generation**. The
+[analysis notebook](01_pmc_interactions.ipynb) reads its existing checkpoints
+through read-only SQLite connections; it cannot start discovery, retrieval,
+NER, inference, retries, or exports.
 
 The date filter is **publication date**, not the date a paper was added to PMC.
 Discovery includes every matching PMC record, including papers without a PubMed
 ID. There is no gene panel, disease filter, or citation threshold.
+
+## Using the analysis notebook while the CLI runs
+
+Open `01_pmc_interactions.ipynb` and run all cells to analyze the current saved
+state. Rerun all cells to refresh. The notebook requires pandas, matplotlib, and
+a Jupyter/IPython environment; it does not load models or need network access.
+Its default output path resolves from this checkout, or you can set `OUTPUT_DIR`
+to the absolute path of another existing CLI run.
+
+The notebook provides:
+
+- Live configuration, discovery state, and the pilot report when available.
+- Pilot, beyond-pilot, and combined progress/coverage summaries.
+- Positive, negative, and unresolved context/article-pair counts.
+- Interaction, gene, and drug rankings by distinct supporting articles.
+- A paginated evidence browser covering all saved positives by default, with
+  cohort, gene, and drug filters and a total match count.
+- Saved source-context inspection when the text is still cached, with its hash
+  checked before display; no text is fetched if the cache was evicted.
+- Failure summaries and a preview of unresolved events.
+
+Set `BROWSER_COHORT`, `GENE_FILTER`, `DRUG_FILTER`, and `DISPLAY_LIMIT` in the
+configuration cell to filter the evidence browser; global summaries retain all
+saved work. The default `BROWSER_COHORT = "all"` includes pilot and non-pilot
+articles, including saved positive contexts from papers still being processed.
+For 50-row pages, set `EVIDENCE_OFFSET` to 0, 50, 100, and so on. The browser shows
+the total matching positives and the displayed row range. New results may shift
+page positions when you refresh; task IDs are stable.
+
+Set `SELECTED_TASK_ID` to any active saved task ID and run the detail cell to
+inspect it directly. This lookup is independent of browser filters, offset, and
+page size, and can inspect negative, failed, or unfinished entries too. Leave it
+unset to select the first positive row on the current page. Details include the
+full evidence quote, complete structured model result and generation statistics,
+article metadata/cohort, normalized entities, section provenance, and an aggregate
+of every saved context for the same article pair. Full cached source text is
+displayed only after its context hash is verified. Detail lookup reads the latest
+checkpoint and may be newer than the summary snapshot.
+
+The notebook handles incomplete discovery, an unfinished pilot, and
+an absence of positive results without launching work to fill those gaps.
+
+Connections use `mode=ro` and `query_only=ON`, and close after reading a consistent
+snapshot, before plots/tables are displayed. Queries aggregate in SQLite and
+limit evidence/failure previews instead of loading the corpus into memory.
+Aggregations on a large checkpoint can still take time. The notebook reads the
+live database directly; no Parquet export is required.
+
+The **All** group includes the pilot; **Beyond pilot** excludes it. Early cohort
+differences can reflect different processing stages. Positive fractions measure
+model output composition, not precision, recall, or biological recovery.
 
 ## How the workflow runs
 
