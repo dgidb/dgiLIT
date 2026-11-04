@@ -220,9 +220,10 @@ previous Qwen implementation are no longer accepted.
 See the [workflow and CLI guide](notebooks/pmc_last10years/README.md) for setup,
 command examples, status-field explanations, stopping/resuming, and exported data.
 
-The corpus workflow in `notebooks/pmc_last10years/01_pmc_interactions.ipynb`
-reuses the section retrieval, BioBERT/VICC normalization, and Qwen classification
-used by the test notebooks. It discovers **all PMC records published from
+The corpus CLI reuses the section retrieval, BioBERT/VICC normalization, and Qwen
+classification used by the test notebooks. The read-only analysis notebook at
+`notebooks/pmc_last10years/01_pmc_interactions.ipynb` inspects the CLI's current
+pilot/full-cohort checkpoints without generating data. The CLI discovers **all PMC records published from
 2016-11-03 through 2026-11-03**, including records without a PMID. It uses every
 parsed abstract/body section, with abstract fallback when full text cannot be
 retrieved. PDFs and supplementary attachments are not processed. PMC content
