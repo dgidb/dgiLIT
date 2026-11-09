@@ -18,6 +18,8 @@ dgiLIT addresses this problem by providing a modular pipeline that:
 
 The workflow is designed to reduce the amount of literature requiring manual inspection while maintaining human oversight of the final curated interactions.
 
+See the [package-to-client workflow diagrams](docs/workflow.md) for component connections, inputs and outputs, checkpoint storage, and how Claim Explorer loads and displays results.
+
 ## Installation
 
 Install the latest release from PyPI:

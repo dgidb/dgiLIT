@@ -4,6 +4,8 @@ A localhost claim browser for AI-discovered positive drug–gene contexts. The e
 CLI generates the data; this application reads its existing checkpoints and
 never starts discovery, NER, inference, retries, or exports.
 
+See the [package-to-client workflow diagrams](../docs/workflow.md) for the extraction pipeline, stored inputs/outputs, and the API-to-screen loading sequence.
+
 The default view includes **both pilot and non-pilot articles**, including saved
 positive contexts from papers whose other tasks remain unfinished. Each row is
 one drug/gene pair assessed in one text context, rather than a unique interaction
