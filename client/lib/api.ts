@@ -1,10 +1,12 @@
 export type Cohort = "pilot" | "beyond_pilot";
+export type ClaimRating = "up" | "down" | null;
+export type ClaimAssessment = { rating: ClaimRating; rated_at: string | null };
 export type SourceResult = {
   state: "verified" | "unavailable" | "hash_mismatch" | "retrieval_error";
   origin: string; context: string | null; message: string; read_at: string;
   section_hash?: string; context_hash?: string;
 };
-export type ContextRow = {
+export type ContextRow = ClaimAssessment & {
   task_id: string; pmcid: string; pmid: string | null; title: string | null;
   publication_year: string | null; coverage: string; article_status: string;
   drug: string; drug_id: string; gene: string; gene_id: string;
@@ -29,7 +31,7 @@ export type Entity = {
   source: string; concept?: { concept_id?: string; concept_label?: string; match_type?: string | number;
     normalizer?: string; error_message?: string | null };
 };
-export type Detail = {
+export type Detail = ClaimAssessment & {
   read_at: string; dataset: string; metadata: Metadata; links: { pmc: string; pubmed?: string };
   prompt: { version?: string; saved_hash?: string; status: string; template?: string | null; note: string };
   entities: Entity[]; related_contexts: { status: string; contexts: number; positive: number; negative: number }[];

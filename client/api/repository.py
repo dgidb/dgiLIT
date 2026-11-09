@@ -71,7 +71,8 @@ class Repository:
                 "positive_contexts": sum(r["positive_contexts"] for r in cohorts),
                 "supporting_articles": sum(r["supporting_articles"] for r in cohorts), "metadata": metadata}
 
-    def contexts(self, *, drug="", gene="", article="", cohort="all", coverage="all", page=1, page_size=50):
+    def contexts(self, *, drug="", gene="", article="", cohort="all", coverage="all",
+                 rating_filter="all", review_db=None, page=1, page_size=50):
         where = " WHERE " + POSITIVE
         params = []
         for value, fields in [(drug, ["t.drug", "t.drug_id"]), (gene, ["t.gene", "t.gene_id"]),
@@ -86,6 +87,23 @@ class Repository:
             where += " AND a.coverage=?"
             params.append(coverage)
         with self.connection() as db:
+            if rating_filter != "all":
+                has_ratings = False
+                if review_db is not None and review_db.is_file():
+                    # Filter in SQL before counting/paging. Both databases are
+                    # opened read-only; absent review stores are never created.
+                    db.execute("ATTACH DATABASE ? AS claim_reviews", (review_db.as_uri() + "?mode=ro",))
+                    has_ratings = db.execute("SELECT 1 FROM claim_reviews.sqlite_master "
+                        "WHERE type='table' AND name='claim_ratings'").fetchone() is not None
+                if has_ratings:
+                    if rating_filter == "up":
+                        where += " AND t.id IN (SELECT task_id FROM claim_reviews.claim_ratings WHERE rating=?)"
+                        params.append("up")
+                    else:
+                        where += " AND NOT EXISTS (SELECT 1 FROM claim_reviews.claim_ratings r WHERE r.task_id=t.id AND r.rating=?)"
+                        params.append("down")
+                elif rating_filter == "up":
+                    where += " AND 0"
             total = db.execute("SELECT count(*)" + ACTIVE + where, params).fetchone()[0]
             rows = [dict(r) for r in db.execute("""SELECT t.id task_id,t.pmcid,a.pmid,a.title,a.publication_year,
                 a.coverage,a.status article_status,t.drug,t.drug_id,t.gene,t.gene_id,t.updated_at,

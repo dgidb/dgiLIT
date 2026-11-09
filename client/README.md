@@ -1,6 +1,6 @@
-# dgiLIT evidence explorer
+# dgiLIT · Claim Explorer
 
-A localhost browser for AI-discovered positive drug–gene contexts. The extraction
+A localhost claim browser for AI-discovered positive drug–gene contexts. The extraction
 CLI generates the data; this application reads its existing checkpoints and
 never starts discovery, NER, inference, retries, or exports.
 
@@ -52,6 +52,7 @@ npm run dev
 
 | Variable | Default | Purpose |
 | --- | --- | --- |
+| `DGILIT_REVIEW_DB` | `client/.local/reviews.sqlite` | Shared human-rating store, outside the extraction directory. |
 | `DGILIT_DATA_DIR` | Existing ten-year run in this checkout | Directory containing `state.sqlite` and optional `text_cache/`. |
 | `DGILIT_API_PORT` | `8000` | Local API port used by the combined launcher. |
 | `PORT` | `5173` | Local frontend port. |
@@ -70,6 +71,10 @@ does not create a run or apply migrations.
 - Search by drug or gene label/concept ID and by article title, PMCID, or PMID.
 - Choose all articles, pilot only, or beyond-pilot results, and full-text or
   abstract-only coverage.
+- Choose **Thumbs up only** to show approved claims, or **Hide thumbs down** to
+  show approved and unrated claims while excluding rejected ones. These assessment
+  filters combine with drug/gene/article/cohort/coverage searches and are applied
+  before counting and pagination.
 - Use 50-row server-side pages. Counts and displayed ranges describe every
   matching active positive context, not just a preview or the pilot.
 - Search state and page selection live in the URL. Open an entry and use **Back
@@ -91,6 +96,39 @@ A historical positive task remains accessible directly and is labeled when its
 article text has been superseded. Article inventory metadata reflects the current
 checkpoint; original task results, section records, and hashes remain attached to
 that task's original version.
+
+## Shared claim assessments
+
+The **dgiLIT** brand is retained; its subtitle and browser-tab title use
+**Claim Explorer**. In an entry's supporting-evidence card, green **Thumbs up**
+and red **Thumbs down** buttons record a human assessment of that specific claim.
+Only one can be selected. Click the selected button again to clear the rating,
+or click the opposite button to switch it. Buttons show saving/selected states;
+a failed save leaves the previous assessment selected and displays an error.
+
+Ratings are shared across browsers using the same API instance and survive app
+restarts. There is one current rating per stable task ID; the latest saved
+assessment wins. There are no per-user identities or vote totals. Historical
+positive tasks can be rated directly, but a different task/version does not
+inherit another task's assessment.
+
+The compact results table shows a green/red thumb icon with no visible text in its first cell, beside
+the drug/gene labels, including on narrow screens. Hover text and accessible
+labels identify the assessment. Unrated claims have no icon.
+Return to the list or refresh it to read the latest shared ratings; other tabs do
+not receive push updates. Human assessments do not change AI predictions, quote
+verification, positive-context counts, or the extraction workflow.
+
+The application writes these ratings to **`client/.local/reviews.sqlite`**, an
+app-owned SQLite file ignored by Git, created when the first assessment is saved.
+Use `DGILIT_REVIEW_DB` to configure another persistent location. Paths inside the
+extraction run directory (including its checkpoint database and text cache) are
+rejected. The extraction database remains read-only. Back up the review database
+separately if its human assessments need to be preserved.
+
+List and detail responses include `rating` (`up`, `down`, or `null`) and `rated_at`.
+Provenance JSON downloads include a separate `human_assessment` object. Clearing
+an assessment returns both fields as `null`.
 
 ## Detail pages and provenance
 
@@ -158,6 +196,8 @@ and upstream credentials are accessed only by the Python backend.
 - `api/repository.py`: parameterized, bounded database queries and short-lived
   read transactions using `mode=ro` plus `query_only=ON`.
 - `api/provenance.py`: saved-record assembly and verified prompt templates.
+- `api/ratings.py`: batched rating reads and transactional writes to the separate
+  app-owned review store; never writes extraction checkpoints.
 - `api/sources.py` and `api/upstream.py`: cached context verification and explicit
   network retrieval, after database connections close.
 - `api/app.py` and `api/contracts.py`: validated HTTP request/response contracts,
@@ -169,7 +209,8 @@ and upstream credentials are accessed only by the Python backend.
 | --- | --- |
 | `GET /api/health` | Check that an existing checkpoint can be read. |
 | `GET /api/summary?refresh=true` | Global positive/context article counts, cohort breakdown, and run metadata. |
-| `GET /api/contexts` | Current positive contexts; accepts `drug`, `gene`, `article`, `cohort`, `coverage`, `page`, and `page_size` (1–100). |
+| `GET /api/contexts` | Current positive contexts; accepts `drug`, `gene`, `article`, `cohort`, `coverage`, `rating` (`all`, `up`, `hide_down`), `page`, and `page_size` (1–100). |
+| `PUT /api/contexts/{task_id}/rating` | Set `{ "rating": "up" }`, `"down"`, or `null` to clear; validates the saved positive claim first. |
 | `GET /api/contexts/{task_id}` | Full positive-entry provenance, including historical entries. |
 | `GET /api/contexts/{task_id}/source` | Read/verify existing cached text; never fetches from the network. |
 | `POST /api/contexts/{task_id}/source` | Explicitly retrieve and verify source text if no verified cached source exists. |
@@ -192,6 +233,7 @@ With the regular web app stopped, launch a fixture-backed instance:
 
 ```bash
 export DGILIT_DATA_DIR="$PWD/outputs/browser-fixture"
+export DGILIT_REVIEW_DB="$PWD/outputs/browser-ratings.sqlite"
 npm run dev
 ```
 
@@ -205,7 +247,7 @@ npm run test:browser
 Retrieval responses are mocked in browser tests. API tests cover the source
 provider and retrieval/hash/failure states. Fixtures, test results, `.venv`,
 `node_modules`, builds, and local runtime state are ignored by Git. To return to
-live data, stop the fixture app, unset `DGILIT_DATA_DIR`, and restart the app.
+live data, stop the fixture app, unset `DGILIT_DATA_DIR` and `DGILIT_REVIEW_DB`, and restart the app.
 
 ## Future production deployment
 

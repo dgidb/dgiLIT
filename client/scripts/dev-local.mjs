@@ -42,6 +42,6 @@ for (let attempt = 0; attempt < 40 && !stopping; attempt++) {
 }
 if (!ready) { console.error("The API did not start. Check its log above."); await stop(1); }
 else if (!stopping) {
-  console.log(`\ndgiLIT evidence browser: http://127.0.0.1:${webPort}\nRead-only API: ${apiOrigin}\n`);
+  console.log(`\ndgiLIT · Claim Explorer: http://127.0.0.1:${webPort}\nRead-only API: ${apiOrigin}\n`);
   start(process.execPath, ["scripts/run-framework.mjs", "dev", "--hostname", "127.0.0.1", "--port", webPort]);
 }

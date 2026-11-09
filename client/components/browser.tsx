@@ -2,11 +2,12 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ArrowUpRight, ChevronLeft, ChevronRight, Database, Dna, RefreshCw, Search, ShieldCheck } from "lucide-react";
+import { ArrowUpRight, ChevronLeft, ChevronRight, Database, RefreshCw, Search, ShieldCheck } from "lucide-react";
 import { api, cohortLabel, ContextList, coverageLabel, number, Summary, when } from "@/lib/api";
+import { RatingBadge } from "./claim-rating";
 
 export function Brand() {
-  return <Link href="/" className="brand" aria-label="dgiLIT home"><span className="brand-mark"><Dna size={23}/></span><span>dgi<span className="brand-light">LIT</span><small>Evidence explorer</small></span></Link>;
+  return <Link href="/" className="brand" aria-label="dgiLIT home"><span className="brand-mark"><img src="/favicon.svg" alt="" width={43} height={43}/></span><span>dgi<span className="brand-light">LIT</span><small>Claim Explorer</small></span></Link>;
 }
 export function Header() {
   return <header className="site-header"><div className="shell header-inner"><Brand/><div className="header-right"><span className="active-nav">Explore contexts</span><span className="local-tag"><span/>Local workspace</span></div></div></header>;
@@ -38,7 +39,7 @@ export function Browser() {
   function changePage(next: number) { const q = new URLSearchParams(query); q.set("page", String(next)); router.push(`/?${q}`); }
   function apply(form: FormData) {
     const q = new URLSearchParams();
-    for (const key of ["drug", "gene", "article", "cohort", "coverage"]) {
+    for (const key of ["drug", "gene", "article", "cohort", "coverage", "rating"]) {
       const value = String(form.get(key) || "").trim();
       if (value && value !== "all") q.set(key, value);
     }
@@ -61,12 +62,13 @@ export function Browser() {
         <label className="article-filter">Article<input name="article" defaultValue={params.get("article") || ""} placeholder="Title, PMCID, or PMID"/></label>
         <label>Cohort<select aria-label="Cohort" name="cohort" defaultValue={params.get("cohort") || "all"}><option value="all">All articles</option><option value="pilot">Pilot only</option><option value="beyond_pilot">Beyond pilot</option></select></label>
         <label>Coverage<select aria-label="Coverage" name="coverage" defaultValue={params.get("coverage") || "all"}><option value="all">All sources</option><option value="full_text">Full text</option><option value="abstract_only">Abstract only</option></select></label>
+        <label>Assessment<select aria-label="Assessment" name="rating" defaultValue={params.get("rating") || "all"}><option value="all">All assessments</option><option value="up">Thumbs up only</option><option value="hide_down">Hide thumbs down</option></select></label>
         <button type="submit" className="button primary"><Search size={15}/>Search</button>
         {query && <Link href="/" className="reset">Reset</Link>}
       </form>
       <div className="table-status" aria-live="polite"><span>{loading ? "Reading saved results…" : data ? `${number(data.total)} matching contexts` : "Results unavailable"}</span><span>{data && `Read ${when(data.read_at)}`}</span></div>
       {error ? <div role="alert" className="empty-state error-state"><h3>We couldn’t read the results</h3><p>{error}</p><button className="button secondary" onClick={() => setNonce(n => n + 1)}>Try again</button></div> : !data && loading ? <div className="empty-state"><RefreshCw className="spin"/><p>Opening the saved evidence…</p></div> : data?.items.length === 0 ? <div className="empty-state"><Search size={27}/><h3>No contexts match this view</h3><p>Try another filter, return to the first page, or refresh as the extraction progresses.</p><Link href="/" className="button secondary">View all contexts</Link></div> : <div className={`table-scroll ${loading ? "refreshing" : ""}`} aria-busy={loading}><table className="evidence-table"><thead><tr><th>Drug / gene</th><th>Supporting evidence</th><th>Source article</th><th>Cohort</th><th>Saved</th><th><span className="sr-only">Entry details</span></th></tr></thead><tbody>{data?.items.map(row => <tr key={row.task_id}>
-        <td><strong className="entity-name">{row.drug}</strong><span className="gene-pill">{row.gene}</span><small className="cell-note">{row.interaction_type || "Interaction supported"}</small></td>
+        <td><strong className="entity-name">{row.drug}</strong><span className="gene-pill">{row.gene}</span><RatingBadge rating={row.rating}/><small className="cell-note">{row.interaction_type || "Interaction supported"}</small></td>
         <td className="evidence-cell"><p className="clamp-3">{row.evidence || "Evidence quote unavailable"}</p><span className="section-note">{row.section_label || row.section_type || "Section unspecified"}</span></td>
         <td className="article-cell"><span className="mono article-id">{row.pmcid}</span><span className="clamp-2 article-title">{row.title || "Untitled article"}</span><small>{coverageLabel(row.coverage)}{row.publication_year ? ` · ${row.publication_year}` : ""}</small></td>
         <td><span className={`cohort-tag ${row.cohort === "pilot" ? "pilot" : "beyond"}`}>{cohortLabel(row.cohort)}</span></td>

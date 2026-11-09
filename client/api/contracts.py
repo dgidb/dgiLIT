@@ -1,6 +1,6 @@
 """Validated HTTP responses; raw saved records remain lossless JSON objects."""
 from typing import Any, Literal
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Health(BaseModel):
@@ -24,7 +24,17 @@ class Summary(BaseModel):
     metadata: dict[str, Any]
 
 
-class ContextRecord(BaseModel):
+class ClaimRating(BaseModel):
+    rating: Literal["up", "down"] | None = None
+    rated_at: str | None = None
+
+
+class RatingUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    rating: Literal["up", "down"] | None
+
+
+class ContextRecord(ClaimRating):
     task_id: str
     pmcid: str
     pmid: str | None
@@ -61,7 +71,7 @@ class PairCounts(BaseModel):
     negative: int
 
 
-class ContextDetail(BaseModel):
+class ContextDetail(ClaimRating):
     task: dict[str, Any]
     entities: list[dict[str, Any]]
     related_contexts: list[PairCounts]

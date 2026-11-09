@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 export const metadata: Metadata = {
-  title: "dgiLIT · Evidence explorer",
+  title: "dgiLIT · Claim Explorer",
   description: "Browse AI-discovered drug–gene contexts with their complete saved provenance.",
   icons: { icon: "/favicon.svg" },
 };

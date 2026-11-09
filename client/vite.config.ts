@@ -18,6 +18,9 @@ const managedLinux = readExecutionProfile() === "managed-linux";
 const localBindingConfig = {
   main: "./worker/index.ts",
   compatibility_flags: ["nodejs_compat"],
+  vars: {
+    DGILIT_API_ORIGIN: process.env.DGILIT_API_ORIGIN || "http://127.0.0.1:8000",
+  },
   d1_databases: d1
     ? [
         {

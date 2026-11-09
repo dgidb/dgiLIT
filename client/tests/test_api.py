@@ -19,7 +19,7 @@ from tests.fixtures import populate, TASK, TEXT
 def setup(tmp_path):
     data=populate(tmp_path/"run")
     prompts=tmp_path/"prompts";prompts.mkdir();(prompts/"v2.text").write_text("test prompt")
-    settings=Settings(data,prompts,summary_ttl=30)
+    settings=Settings(data,prompts,summary_ttl=30,review_db=tmp_path/"reviews.sqlite")
     provider=MagicMock()
     provider.fetch.return_value=([{"text":TEXT}],[])
     repo=Repository(settings)
@@ -158,3 +158,170 @@ def test_pubmed_fallback_uses_existing_parser_and_no_models(setup):
         sections,errors=PMCSourceProvider().fetch(task)
     assert sections[0]['text']=='PubMed abstract' and sections[0]['source']=='pubmed'
     assert errors==[]
+
+
+def test_rating_cycle_persists_and_preserves_extraction_database(setup):
+    settings,repo,_,client=setup
+    original=(settings.data_dir/'state.sqlite').read_bytes()
+    assert client.get('/api/contexts/'+TASK(1)).json()['rating'] is None
+    assert not settings.review_db.exists()
+    saved=client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'up'})
+    assert saved.status_code==200 and saved.json()['rating']=='up' and saved.json()['rated_at']
+    assert settings.review_db.exists()
+    assert client.get('/api/contexts/'+TASK(1)).json()['rating']=='up'
+    page=client.get('/api/contexts?page_size=100').json()
+    assert next(row for row in page['items'] if row['task_id']==TASK(1))['rating']=='up'
+    assert all(row['rating'] is None for row in page['items'] if row['task_id']!=TASK(1))
+    assert client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'down'}).json()['rating']=='down'
+    assert client.get('/api/contexts/'+TASK(1)).json()['rating']=='down'
+    assert client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':None}).json()=={'rating':None,'rated_at':None}
+    assert client.get('/api/contexts/'+TASK(1)).json()['rating'] is None
+    assert (settings.data_dir/'state.sqlite').read_bytes()==original
+    with repo.connection() as db:
+        assert db.execute("SELECT 1 FROM sqlite_master WHERE name='claim_ratings'").fetchone() is None
+    with sqlite3.connect(settings.review_db) as db:
+        assert db.execute('SELECT count(*) FROM claim_ratings').fetchone()[0]==0
+
+
+def test_ratings_shared_across_app_restarts_and_browsers(setup):
+    settings,_,_,client=setup
+    client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'up'})
+    another=TestClient(create_app(settings))
+    assert another.get('/api/contexts/'+TASK(1)).json()['rating']=='up'
+    another.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'down'})
+    assert client.get('/api/contexts/'+TASK(1)).json()['rating']=='down'
+
+
+def test_ratings_allow_history_and_do_not_transfer_between_tasks(setup):
+    _,_,_,client=setup
+    response=client.put('/api/contexts/'+TASK(63)+'/rating',json={'rating':'down'})
+    assert response.status_code==200
+    record=client.get('/api/contexts/'+TASK(63)).json()
+    assert record['rating']=='down' and record['task']['is_current'] is False
+    assert client.get('/api/contexts/'+TASK(53)).json()['rating'] is None
+
+
+@pytest.mark.parametrize('body',[{'rating':'invalid'}, {'rating':True}, {'rating':1}, {}, {'rating':'up','extra':'not allowed'}])
+def test_invalid_rating_input_creates_no_store(setup,body):
+    settings,_,_,client=setup
+    assert client.put('/api/contexts/'+TASK(1)+'/rating',json=body).status_code==422
+    assert not settings.review_db.exists()
+
+
+def test_missing_or_nonpositive_claim_cannot_be_rated(setup):
+    settings,_,_,client=setup
+    assert client.put('/api/contexts/'+TASK(999)+'/rating',json={'rating':'up'}).status_code==404
+    assert client.put('/api/contexts/invalid/rating',json={'rating':'up'}).status_code==404
+    with sqlite3.connect(settings.data_dir/'state.sqlite') as db:
+        db.execute('UPDATE tasks SET result=? WHERE id=?',(json.dumps({'interaction':False}),TASK(1)))
+    assert client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'up'}).status_code==404
+    assert not settings.review_db.exists()
+
+
+def test_save_failure_keeps_previous_assessment(setup):
+    from api.ratings import RatingsUnavailable
+    _,_,_,client=setup
+    client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'up'})
+    with patch.object(client.app.state.ratings,'set',side_effect=RatingsUnavailable('Save failed')):
+        response=client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'down'})
+    assert response.status_code==503
+    assert client.get('/api/contexts/'+TASK(1)).json()['rating']=='up'
+
+
+def test_ratings_page_uses_one_batch_lookup(setup):
+    _,_,_,client=setup
+    store=client.app.state.ratings
+    with patch.object(store,'get_many',wraps=store.get_many) as query:
+        response=client.get('/api/contexts')
+        assert response.status_code==200
+        assert query.call_count==1 and len(query.call_args.args[0])==50
+
+
+def test_review_configuration_cannot_target_extraction_directory(tmp_path,monkeypatch):
+    data=tmp_path/'run';data.mkdir()
+    for target in [data/'state.sqlite',data/'reviews.sqlite',data/'text_cache/reviews.sqlite']:
+        with pytest.raises(ValueError,match='outside the extraction run'):
+            Settings(data,review_db=target)
+    alias=tmp_path/'alias';alias.symlink_to(data,target_is_directory=True)
+    with pytest.raises(ValueError):Settings(data,review_db=alias/'reviews.sqlite')
+    monkeypatch.setenv('DGILIT_DATA_DIR',str(data))
+    monkeypatch.setenv('DGILIT_REVIEW_DB',str(tmp_path/'app-data/reviews.sqlite'))
+    assert Settings.from_environment().review_db==tmp_path/'app-data/reviews.sqlite'
+
+
+def test_review_filesystem_failure_returns_clear_error(setup,tmp_path):
+    settings,_,_,_=setup
+    not_directory=tmp_path/'file';not_directory.write_text('file')
+    blocked=Settings(settings.data_dir,settings.prompt_dir,review_db=not_directory/'reviews.sqlite')
+    client=TestClient(create_app(blocked))
+    response=client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'up'})
+    assert response.status_code==503 and response.json()['code']=='ratings_unavailable'
+
+
+def test_rating_filters_with_no_review_store(setup):
+    settings,_,_,client=setup
+    assert client.get('/api/contexts?rating=up').json()['total']==0
+    assert client.get('/api/contexts?rating=hide_down').json()['total']==62
+    assert not settings.review_db.exists()
+    assert client.get('/api/contexts?rating=invalid').status_code==422
+
+
+def test_rating_filters_include_unrated_when_hiding_down_and_combine_with_search(setup):
+    settings,_,_,client=setup
+    original=(settings.data_dir/'state.sqlite').read_bytes()
+    for task,rating in [(1,'up'),(53,'up'),(2,'down'),(54,'down'),(63,'up')]:
+        assert client.put('/api/contexts/'+TASK(task)+'/rating',json={'rating':rating}).status_code==200
+    approved=client.get('/api/contexts?rating=up').json()
+    assert approved['total']==2 and {r['task_id'] for r in approved['items']}=={TASK(1),TASK(53)}
+    hidden=client.get('/api/contexts?rating=hide_down').json()
+    assert hidden['total']==60
+    assert all(r['rating']!='down' for r in hidden['items'])
+    assert any(r['rating'] is None for r in hidden['items'])
+    combined=client.get('/api/contexts',params={'rating':'up','cohort':'beyond_pilot','coverage':'abstract_only','article':'PMC2','gene':'bcl2','drug':'drug:1'}).json()
+    assert combined['total']==1 and combined['items'][0]['task_id']==TASK(53)
+    assert client.get('/api/contexts?rating=hide_down&cohort=beyond_pilot').json()['total']==9
+    assert (settings.data_dir/'state.sqlite').read_bytes()==original
+
+
+def test_rating_filter_applies_before_counting_and_pagination(setup):
+    _,_,_,client=setup
+    for i in range(1,54):client.app.state.ratings.set(TASK(i),'up')
+    first=client.get('/api/contexts?rating=up&page=1').json()
+    second=client.get('/api/contexts?rating=up&page=2').json()
+    assert first['total']==second['total']==53
+    assert len(first['items'])==50 and len(second['items'])==3
+    assert all(r['rating']=='up' for r in [*first['items'],*second['items']])
+    assert not ({r['task_id'] for r in first['items']} & {r['task_id'] for r in second['items']})
+    for i in range(1,54):client.app.state.ratings.set(TASK(i),'down')
+    visible=client.get('/api/contexts?rating=hide_down').json()
+    assert visible['total']==9 and len(visible['items'])==9
+
+
+def test_rating_filters_after_switching_and_clearing(setup):
+    _,_,_,client=setup
+    client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'up'})
+    assert client.get('/api/contexts?rating=up').json()['total']==1
+    client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'down'})
+    assert client.get('/api/contexts?rating=up').json()['total']==0
+    assert client.get('/api/contexts?rating=hide_down').json()['total']==61
+    client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':None})
+    assert client.get('/api/contexts?rating=hide_down').json()['total']==62
+
+
+def test_filter_connections_keep_both_databases_read_only(setup):
+    settings,_,_,client=setup
+    client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'up'})
+    before=settings.review_db.read_bytes()
+    statements=[]
+    original_connect=sqlite3.connect
+    def traced(*args,**kwargs):
+        db=original_connect(*args,**kwargs)
+        db.set_trace_callback(statements.append)
+        return db
+    with patch('api.repository.sqlite3.connect',side_effect=traced):
+        assert client.get('/api/contexts?rating=up').status_code==200
+        assert client.get('/api/contexts?rating=hide_down').status_code==200
+    attachments=[s for s in statements if s.startswith('ATTACH DATABASE')]
+    assert len(attachments)==2 and all('?mode=ro' in s for s in attachments)
+    assert not any(s.lstrip().upper().startswith(('INSERT','UPDATE','DELETE','CREATE')) for s in statements)
+    assert settings.review_db.read_bytes()==before

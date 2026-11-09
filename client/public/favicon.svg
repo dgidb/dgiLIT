@@ -1,1 +1,18 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48"><rect width="48" height="48" rx="12" fill="#183f54"/><g fill="none" stroke="#b8e5d7" stroke-width="2.5" stroke-linecap="round"><path d="M17 10c0 14 14 14 14 28M31 10c0 14-14 14-14 28M18 13h12M19 21h10M19 29h10M18 36h12"/></g></svg>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
+  <defs>
+    <linearGradient id="purple" x1="18" y1="28" x2="30" y2="42" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#AE42F4"/>
+      <stop offset="1" stop-color="#7100BF"/>
+    </linearGradient>
+  </defs>
+  <rect width="48" height="48" rx="11" fill="#241032"/>
+  <!-- A purple drug tube wrapped in the original mark's tapering spiral. -->
+  <path d="M18 15h12v20.5a6 6 0 0 1-12 0Z" fill="#BFA0D6"/>
+  <path d="M19.5 29h9v6.5a4.5 4.5 0 0 1-9 0Z" fill="url(#purple)"/>
+  <path d="M21 31v4.8" fill="none" stroke="#D694FF" stroke-width="1.5" stroke-linecap="round"/>
+  <path d="m13 13 18 5-2 4-14-5Z" fill="#9470AF"/>
+  <path d="m16 21 13 4-1 4-10-4Z" fill="#9470AF"/>
+  <path d="M10 10 36 6l-3 5-20 5Z" fill="#F8F3FC"/>
+  <path d="m14 19 18-6-1.5 5-14 6Z" fill="#F8F3FC"/>
+  <path d="m17.5 27 12-5-.5 4-10 5Z" fill="#F8F3FC"/>
+</svg>

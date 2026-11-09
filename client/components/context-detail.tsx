@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import { ArrowLeft, Check, Copy, Download, ExternalLink, FileText, RefreshCw, ShieldCheck } from "lucide-react";
 import { api, cohortLabel, coverageLabel, Detail, SourceResult, when } from "@/lib/api";
 import { Header } from "./browser";
+import { ClaimRatingControls } from "./claim-rating";
 
 export function ContextDetail({ taskId }: { taskId: string }) {
   const params = useSearchParams();
@@ -37,7 +38,9 @@ export function ContextDetail({ taskId }: { taskId: string }) {
     catch { setSourceError("Clipboard access was unavailable. The full task ID is shown in Provenance below."); }
   }
   function download() {
-    const blob = new Blob([JSON.stringify({ ...detail, source_context: source }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ ...detail,
+      human_assessment: { rating: detail?.rating ?? null, rated_at: detail?.rated_at ?? null },
+      source_context: source }, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a"); a.href = url; a.download = `${detail?.task.pmcid}-${taskId.slice(0,12)}-provenance.json`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -53,6 +56,8 @@ export function ContextDetail({ taskId }: { taskId: string }) {
       <div className="detail-layout"><div className="detail-content">
         <section className="card evidence-card"><div className="section-heading"><h2>Supporting evidence</h2><span className={`verification ${r.evidence_in_context ? "verified" : ""}`}><ShieldCheck size={14}/>{r.evidence_in_context ? "Quote verified when classified" : "Verification not recorded"}</span></div>
           <blockquote>{String(r.evidence || "No supporting quote was saved.")}</blockquote><div className="quote-caption"><FileText size={14}/>{t.section_metadata?.label || t.section_metadata?.section_type || "Section unspecified"}{t.section_metadata?.parent_label ? ` · ${t.section_metadata.parent_label}` : ""}</div>
+          <ClaimRatingControls taskId={taskId} assessment={{ rating: detail.rating, rated_at: detail.rated_at }}
+            onSaved={assessment => setDetail(previous => previous ? { ...previous, ...assessment } : previous)}/>
           <MetaGrid rows={[["Requested drug", `${t.drug} · ${t.drug_id}`], ["Requested gene", `${t.gene} · ${t.gene_id}`], ["Interaction type", r.interaction_type], ["Directionality", r.directionality]]}/>
         </section>
         <section className="card"><div className="section-heading"><h2>Source context</h2>{source?.state === "verified" && <span className="verification verified"><ShieldCheck size={14}/>Hashes verified</span>}</div>

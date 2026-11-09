@@ -8,19 +8,22 @@ from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import JSONResponse
 
 from .config import Settings
-from .contracts import Health, Summary, ContextPage, ContextDetail, SourceResult
+from .contracts import Health, Summary, ContextPage, ContextDetail, SourceResult, ClaimRating, RatingUpdate
 from .provenance import assemble_provenance
 from .repository import Repository, DatabaseUnavailable, ContextNotFound
 from .sources import SourceService, SourceBusy
+from .ratings import RatingRepository, RatingsUnavailable
 
 
 def create_app(settings=None, repository=None, provider=None):
     settings = settings or Settings.from_environment()
     repo = repository or Repository(settings)
     sources = SourceService(settings, provider)
-    app = FastAPI(title="dgiLIT Context Browser API", version="1.0.0")
+    ratings = RatingRepository(settings)
+    app = FastAPI(title="dgiLIT · Claim Explorer API", version="1.0.0")
     app.state.repository = repo
     app.state.sources = sources
+    app.state.ratings = ratings
     summary_lock = threading.Lock()
     summary_cache = {"at": 0, "value": None}
 
@@ -43,10 +46,16 @@ def create_app(settings=None, repository=None, provider=None):
     def busy_source(request, exc):
         return JSONResponse(status_code=429, content={"detail": str(exc), "code": "source_busy"})
 
+    @app.exception_handler(RatingsUnavailable)
+    def ratings_error(request, exc):
+        return JSONResponse(status_code=503, content={"detail": str(exc), "code": "ratings_unavailable"})
+
     def detail(task_id):
         if not re.fullmatch(r"[a-f0-9]{64}", task_id):
             raise ContextNotFound("This positive context was not found.")
-        return assemble_provenance(repo.detail(task_id), settings)
+        value = assemble_provenance(repo.detail(task_id), settings)
+        value.update(ratings.get(task_id))
+        return value
 
     @app.get("/api/health", response_model=Health)
     def health():
@@ -63,13 +72,28 @@ def create_app(settings=None, repository=None, provider=None):
     def contexts(drug: str = Query("", max_length=200), gene: str = Query("", max_length=200),
                  article: str = Query("", max_length=300), cohort: Literal["all", "pilot", "beyond_pilot"] = "all",
                  coverage: Literal["all", "full_text", "abstract_only"] = "all",
+                 rating: Literal["all", "up", "hide_down"] = "all",
                  page: int = Query(1, ge=1, le=10000000), page_size: int = Query(50, ge=1, le=100)):
-        return repo.contexts(drug=drug.strip(), gene=gene.strip(), article=article.strip(), cohort=cohort,
-                             coverage=coverage, page=page, page_size=page_size)
+        value = repo.contexts(drug=drug.strip(), gene=gene.strip(), article=article.strip(), cohort=cohort,
+                             coverage=coverage, rating_filter=rating, review_db=settings.review_db,
+                             page=page, page_size=page_size)
+        page_ratings = ratings.get_many([row["task_id"] for row in value["items"]])
+        for row in value["items"]:
+            row.update(page_ratings.get(row["task_id"], {"rating": None, "rated_at": None}))
+        return value
 
     @app.get("/api/contexts/{task_id}", response_model=ContextDetail)
     def context_detail(task_id: str):
         return detail(task_id)
+
+    @app.put("/api/contexts/{task_id}/rating", response_model=ClaimRating)
+    def rate_claim(task_id: str, assessment: RatingUpdate):
+        # The extraction repository validates the claim using a read-only
+        # connection, which closes before the app-owned database is written.
+        if not re.fullmatch(r"[a-f0-9]{64}", task_id):
+            raise ContextNotFound("This positive context was not found.")
+        repo.detail(task_id)
+        return ratings.set(task_id, assessment.rating)
 
     @app.get("/api/contexts/{task_id}/source", response_model=SourceResult)
     def cached_source(task_id: str):
