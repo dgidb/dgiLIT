@@ -1,7 +1,13 @@
-research/data/*
-research/outputs/*
-research/search/*
-research/*.zip
-analysis-runs-do-not-commit/*
+.env
+# macOS
 .DS_Store
-__pycache__/*
+
+# Python build/cache artifacts
+*.egg-info/
+__pycache__/
+*.py[cod]
+
+# Local SQLite databases (uncomment if you do not intend to version them)
+*.sqlite
+*.sqlite3
+*.db
