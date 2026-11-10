@@ -203,3 +203,107 @@ test("assessment filters include all pages and preserve search state", async ({p
   await page.getByRole('link',{name:'Reset',exact:true}).click();
   await expect(page.getByText('62 matching contexts')).toBeVisible();
 });
+
+test("thumbs-down reasons are optional, independently editable and included in provenance", async ({page,request}) => {
+  const id=taskId(3);
+  await request.put(`/api/contexts/${id}/rating`,{data:{rating:null}});
+  await page.goto(`/contexts/${id}`);
+  const down=page.getByRole("button",{name:"Thumbs down",exact:true});
+  const up=page.getByRole("button",{name:"Thumbs up",exact:true});
+  const reasons=page.getByRole("group",{name:"Error reasons",exact:true});
+  await expect(reasons).toHaveCount(0);
+  await down.click();
+  await expect(reasons).toBeVisible();
+  await expect(reasons.getByRole("button")).toHaveCount(8);
+  expect((await (await request.get(`/api/contexts/${id}`)).json()).error_reasons).toEqual([]);
+  const gene=reasons.getByRole("button",{name:"Incorrect gene grouping",exact:true});
+  const evidence=reasons.getByRole("button",{name:"Not enough evidence",exact:true});
+  await gene.click();
+  await expect(gene).toHaveAttribute("aria-pressed","true");
+  await evidence.focus();
+  await page.keyboard.press("Space");
+  await expect(evidence).toHaveAttribute("aria-pressed","true");
+  await page.reload();
+  await expect(gene).toHaveAttribute("aria-pressed","true");
+  await expect(evidence).toHaveAttribute("aria-pressed","true");
+  await gene.focus();
+  await page.keyboard.press("Enter");
+  await expect(gene).toHaveAttribute("aria-pressed","false");
+  await expect(evidence).toHaveAttribute("aria-pressed","true");
+  const download=page.waitForEvent("download");
+  await page.getByRole("button",{name:"Provenance JSON"}).click();
+  const file=await (await download).path();
+  const {readFile}=await import("node:fs/promises");
+  const record=JSON.parse(await readFile(file!,"utf8"));
+  expect(record.human_assessment).toMatchObject({rating:"down",error_reasons:["not_enough_evidence"]});
+  const other=await page.context().browser()!.newContext();
+  try {
+    const otherPage=await other.newPage();
+    await otherPage.goto(`${new URL(page.url()).origin}/contexts/${id}`);
+    await expect(otherPage.getByRole("button",{name:"Not enough evidence",exact:true})).toHaveAttribute("aria-pressed","true");
+  } finally {await other.close();}
+  await up.click();
+  await expect(up).toHaveAttribute("aria-pressed","true");
+  await expect(reasons).toHaveCount(0);
+  expect((await (await request.get(`/api/contexts/${id}`)).json()).error_reasons).toEqual([]);
+  await down.click();
+  await expect(evidence).toHaveAttribute("aria-pressed","false");
+  await evidence.click();
+  await expect(evidence).toHaveAttribute("aria-pressed","true");
+  await down.click();
+  await expect(reasons).toHaveCount(0);
+  expect((await (await request.get(`/api/contexts/${id}`)).json()).error_reasons).toEqual([]);
+});
+
+test("failed reason saves disable controls and preserve the saved selection", async ({page,request}) => {
+  const id=taskId(4);
+  await request.put(`/api/contexts/${id}/rating`,{data:{rating:"down",error_reasons:["not_enough_evidence"]}});
+  await page.goto(`/contexts/${id}`);
+  const reasons=page.getByRole("group",{name:"Error reasons",exact:true});
+  const previous=reasons.getByRole("button",{name:"Not enough evidence",exact:true});
+  const next=reasons.getByRole("button",{name:"Incorrect directionality",exact:true});
+  await expect(previous).toHaveAttribute("aria-pressed","true");
+  let release: (()=>void) | undefined;
+  const pending=new Promise<void>(resolve=>{release=resolve;});
+  await page.route(`**/api/contexts/${id}/rating`,async route=>{
+    await pending;
+    await route.fulfill({status:503,json:{detail:"The claim rating could not be saved. Your previous assessment is unchanged."}});
+  });
+  await next.click();
+  await expect(page.getByRole("status")).toContainText("Saving assessment");
+  for(const button of await reasons.getByRole("button").all())await expect(button).toBeDisabled();
+  await expect(page.getByRole("button",{name:"Thumbs up",exact:true})).toBeDisabled();
+  await expect(page.getByRole("button",{name:"Thumbs down",exact:true})).toBeDisabled();
+  await expect(previous).toHaveAttribute("aria-pressed","true");
+  await expect(next).toHaveAttribute("aria-pressed","false");
+  release!();
+  await expect(page.getByRole("alert")).toContainText("previous assessment is unchanged");
+  await expect(next).toBeEnabled();
+  await expect(previous).toHaveAttribute("aria-pressed","true");
+  await expect(next).toHaveAttribute("aria-pressed","false");
+  expect((await (await request.get(`/api/contexts/${id}`)).json()).error_reasons).toEqual(["not_enough_evidence"]);
+});
+
+test("all eight reason buttons wrap and remain usable on mobile", async ({page,request}) => {
+  const id=taskId(5);
+  await request.put(`/api/contexts/${id}/rating`,{data:{rating:"down"}});
+  await page.setViewportSize({width:375,height:812});
+  await page.goto(`/contexts/${id}`);
+  const group=page.getByRole("group",{name:"Error reasons",exact:true});
+  const labels=["Incorrect gene grouping","Incorrect drug grouping","No direct interaction","No indirect interaction",
+    "No effects on gene regulation","Not enough evidence","Incorrect directionality","Incorrect supporting evidence"];
+  for(const label of labels){
+    const button=group.getByRole("button",{name:label,exact:true});
+    await expect(button).toBeVisible();
+    const box=await button.boundingBox();
+    expect(box!.x).toBeGreaterThanOrEqual(0);
+    expect(box!.x+box!.width).toBeLessThanOrEqual(375);
+    if(await button.getAttribute("aria-pressed")!=="true")await button.click();
+    await expect(button).toHaveAttribute("aria-pressed","true");
+  }
+  await page.reload();
+  for(const label of labels)await expect(group.getByRole("button",{name:label,exact:true})).toHaveAttribute("aria-pressed","true");
+  expect((await (await request.get(`/api/contexts/${id}`)).json()).error_reasons).toHaveLength(8);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBeTruthy();
+  await page.screenshot({path:"outputs/error-reasons-mobile.png",fullPage:true});
+});

@@ -1,6 +1,17 @@
 export type Cohort = "pilot" | "beyond_pilot";
 export type ClaimRating = "up" | "down" | null;
-export type ClaimAssessment = { rating: ClaimRating; rated_at: string | null };
+export const ERROR_REASONS = [
+  { code: "incorrect_gene_grouping", label: "Incorrect gene grouping" },
+  { code: "incorrect_drug_grouping", label: "Incorrect drug grouping" },
+  { code: "no_direct_interaction", label: "No direct interaction" },
+  { code: "no_indirect_interaction", label: "No indirect interaction" },
+  { code: "no_effects_on_gene_regulation", label: "No effects on gene regulation" },
+  { code: "not_enough_evidence", label: "Not enough evidence" },
+  { code: "incorrect_directionality", label: "Incorrect directionality" },
+  { code: "incorrect_supporting_evidence", label: "Incorrect supporting evidence" },
+] as const;
+export type ErrorReason = typeof ERROR_REASONS[number]["code"];
+export type ClaimAssessment = { rating: ClaimRating; rated_at: string | null; error_reasons: ErrorReason[] };
 export type SourceResult = {
   state: "verified" | "unavailable" | "hash_mismatch" | "retrieval_error";
   origin: string; context: string | null; message: string; read_at: string;

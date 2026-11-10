@@ -93,7 +93,8 @@ def create_app(settings=None, repository=None, provider=None):
         if not re.fullmatch(r"[a-f0-9]{64}", task_id):
             raise ContextNotFound("This positive context was not found.")
         repo.detail(task_id)
-        return ratings.set(task_id, assessment.rating)
+        return ratings.set(task_id, assessment.rating,
+                           assessment.error_reasons if "error_reasons" in assessment.model_fields_set else None)
 
     @app.get("/api/contexts/{task_id}/source", response_model=SourceResult)
     def cached_source(task_id: str):

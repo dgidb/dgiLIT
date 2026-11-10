@@ -174,7 +174,7 @@ def test_rating_cycle_persists_and_preserves_extraction_database(setup):
     assert all(row['rating'] is None for row in page['items'] if row['task_id']!=TASK(1))
     assert client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'down'}).json()['rating']=='down'
     assert client.get('/api/contexts/'+TASK(1)).json()['rating']=='down'
-    assert client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':None}).json()=={'rating':None,'rated_at':None}
+    assert client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':None}).json()=={'rating':None,'rated_at':None,'error_reasons':[]}
     assert client.get('/api/contexts/'+TASK(1)).json()['rating'] is None
     assert (settings.data_dir/'state.sqlite').read_bytes()==original
     with repo.connection() as db:
@@ -349,3 +349,94 @@ def test_v3_provenance_checks_assembled_references(setup):
     assert value['prompt']['template'] is None
     (refs / 'interaction_vocabulary.json').unlink()
     assert assemble_provenance(detail, settings)['prompt']['status'] == 'unavailable'
+
+
+def test_multiple_error_reasons_persist_edit_clear_and_export_through_api(setup):
+    settings,_,_,client=setup
+    original=(settings.data_dir/'state.sqlite').read_bytes()
+    route='/api/contexts/'+TASK(1)
+    reasons=['incorrect_gene_grouping','not_enough_evidence']
+    saved=client.put(route+'/rating',json={'rating':'down','error_reasons':list(reversed(reasons))})
+    assert saved.status_code==200 and saved.json()['error_reasons']==reasons
+    another=TestClient(create_app(settings))
+    assert another.get(route).json()['error_reasons']==reasons
+    page=another.get('/api/contexts?page_size=100').json()
+    assert next(r for r in page['items'] if r['task_id']==TASK(1))['error_reasons']==reasons
+    # Legacy clients do not silently erase existing explanations.
+    assert another.put(route+'/rating',json={'rating':'down'}).json()['error_reasons']==reasons
+    with patch('api.ratings.utcnow',return_value='2030-01-01T00:00:00+00:00'):
+        edited=client.put(route+'/rating',json={'rating':'down','error_reasons':[reasons[0]]}).json()
+    assert edited['error_reasons']==[reasons[0]] and edited['rated_at']=='2030-01-01T00:00:00+00:00'
+    assert client.put(route+'/rating',json={'rating':'down','error_reasons':[]}).json()['error_reasons']==[]
+    client.put(route+'/rating',json={'rating':'down','error_reasons':reasons})
+    assert client.put(route+'/rating',json={'rating':'up'}).json()['error_reasons']==[]
+    assert client.put(route+'/rating',json={'rating':'down'}).json()['error_reasons']==[]
+    client.put(route+'/rating',json={'rating':'down','error_reasons':reasons})
+    assert client.put(route+'/rating',json={'rating':None}).json()=={'rating':None,'rated_at':None,'error_reasons':[]}
+    assert client.get(route).json()['error_reasons']==[]
+    assert (settings.data_dir/'state.sqlite').read_bytes()==original
+
+
+@pytest.mark.parametrize('body',[
+    {'rating':'down','error_reasons':['unknown']},
+    {'rating':'down','error_reasons':['not_enough_evidence','not_enough_evidence']},
+    {'rating':'down','error_reasons':None},
+    {'rating':'down','error_reasons':'not_enough_evidence'},
+    {'rating':'up','error_reasons':['not_enough_evidence']},
+    {'rating':None,'error_reasons':['not_enough_evidence']},
+])
+def test_invalid_reasons_do_not_create_or_modify_reviews(setup,body):
+    settings,_,_,client=setup
+    route='/api/contexts/'+TASK(1)+'/rating'
+    assert client.put(route,json=body).status_code==422
+    assert not settings.review_db.exists()
+    client.put(route,json={'rating':'down','error_reasons':['incorrect_drug_grouping']})
+    before=settings.review_db.read_bytes()
+    assert client.put(route,json=body).status_code==422
+    assert settings.review_db.read_bytes()==before
+
+
+def create_legacy_ratings(settings):
+    settings.review_db.parent.mkdir(parents=True,exist_ok=True)
+    with sqlite3.connect(settings.review_db) as db:
+        db.execute("CREATE TABLE claim_ratings(task_id TEXT PRIMARY KEY,rating TEXT NOT NULL,rated_at TEXT NOT NULL)")
+        db.executemany('INSERT INTO claim_ratings VALUES (?,?,?)',[(TASK(1),'down','old-time'),(TASK(2),'up','older-time')])
+
+
+def test_legacy_rating_schema_reads_without_writes_then_migrates_atomically(setup):
+    settings,_,_,client=setup
+    create_legacy_ratings(settings)
+    before=settings.review_db.read_bytes()
+    assert client.get('/api/contexts/'+TASK(1)).json()['error_reasons']==[]
+    assert next(r for r in client.get('/api/contexts?page_size=100').json()['items'] if r['task_id']==TASK(1))['error_reasons']==[]
+    assert settings.review_db.read_bytes()==before
+    response=client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'down','error_reasons':['no_indirect_interaction','no_direct_interaction']})
+    assert response.status_code==200
+    assert response.json()['error_reasons']==['no_direct_interaction','no_indirect_interaction']
+    with sqlite3.connect(settings.review_db) as db:
+        assert db.execute('SELECT rating,rated_at,error_reasons FROM claim_ratings WHERE task_id=?',(TASK(2),)).fetchone()==('up','older-time','[]')
+    assert client.get('/api/contexts?rating=hide_down').json()['total']==61
+
+
+def test_failed_migration_write_rolls_back_schema_and_existing_assessment(setup):
+    settings,_,_,client=setup
+    create_legacy_ratings(settings)
+    with sqlite3.connect(settings.review_db) as db:
+        db.execute("CREATE TRIGGER fail_save BEFORE INSERT ON claim_ratings BEGIN SELECT RAISE(ABORT,'fixture save failure'); END")
+    response=client.put('/api/contexts/'+TASK(1)+'/rating',json={'rating':'down','error_reasons':['not_enough_evidence']})
+    assert response.status_code==503
+    with sqlite3.connect(settings.review_db) as db:
+        assert 'error_reasons' not in {r[1] for r in db.execute('PRAGMA table_info(claim_ratings)')}
+        assert db.execute('SELECT rating,rated_at FROM claim_ratings WHERE task_id=?',(TASK(1),)).fetchone()==('down','old-time')
+    assert client.get('/api/contexts/'+TASK(1)).json()['error_reasons']==[]
+
+
+def test_all_error_reason_codes_and_historical_task_isolation(setup):
+    from typing import get_args
+    from api.contracts import ErrorReason
+    _,_,_,client=setup
+    reasons=list(get_args(ErrorReason))
+    assert len(reasons)==8
+    assert client.put('/api/contexts/'+TASK(63)+'/rating',json={'rating':'down','error_reasons':reasons}).json()['error_reasons']==reasons
+    assert client.get('/api/contexts/'+TASK(63)).json()['error_reasons']==reasons
+    assert client.get('/api/contexts/'+TASK(53)).json()['error_reasons']==[]

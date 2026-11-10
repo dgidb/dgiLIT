@@ -108,6 +108,15 @@ Only one can be selected. Click the selected button again to clear the rating,
 or click the opposite button to switch it. Buttons show saving/selected states;
 a failed save leaves the previous assessment selected and displays an error.
 
+After saving **Thumbs down**, an **Error reasons** group appears. Its eight buttons
+allow multiple optional selections: Incorrect gene grouping, Incorrect drug grouping,
+No direct interaction, No indirect interaction, No effects on gene regulation,
+Not enough evidence, Incorrect directionality, and Incorrect supporting evidence.
+Each button toggles independently and saves immediately. Switching to thumbs up or
+clearing the assessment clears all reasons; switching back starts with none. All
+assessment controls are disabled while saving. Failed saves preserve the last saved
+rating and reasons.
+
 Ratings are shared across browsers using the same API instance and survive app
 restarts. There is one current rating per stable task ID; the latest saved
 assessment wins. There are no per-user identities or vote totals. Historical
@@ -123,14 +132,32 @@ verification, positive-context counts, or the extraction workflow.
 
 The application writes these ratings to **`client/.local/reviews.sqlite`**, an
 app-owned SQLite file ignored by Git, created when the first assessment is saved.
+Older databases are readable without modification; existing assessments have empty
+reason arrays. The first write transactionally adds the reasons column and saves the
+assessment. Reason changes update the same assessment timestamp.
 Use `DGILIT_REVIEW_DB` to configure another persistent location. Paths inside the
 extraction run directory (including its checkpoint database and text cache) are
 rejected. The extraction database remains read-only. Back up the review database
 separately if its human assessments need to be preserved.
 
-List and detail responses include `rating` (`up`, `down`, or `null`) and `rated_at`.
-Provenance JSON downloads include a separate `human_assessment` object. Clearing
-an assessment returns both fields as `null`.
+List and detail responses include `rating` (`up`, `down`, or `null`), `rated_at`,
+and `error_reasons` (an array of stable codes). Provenance JSON downloads include all
+three in a separate `human_assessment` object. Clearing an assessment returns null
+rating/timestamp and an empty reason array.
+
+The existing rating PUT accepts, for example:
+
+```json
+{"rating":"down","error_reasons":["incorrect_gene_grouping","not_enough_evidence"]}
+```
+
+Codes follow the displayed order: `incorrect_gene_grouping`, `incorrect_drug_grouping`,
+`no_direct_interaction`, `no_indirect_interaction`, `no_effects_on_gene_regulation`,
+`not_enough_evidence`, `incorrect_directionality`, `incorrect_supporting_evidence`.
+Unknown/duplicate codes, null arrays, and nonempty reasons for up/cleared assessments
+are rejected. An explicit empty array clears reasons. Omitting the array preserves
+reasons on an existing thumbs down for compatibility with older clients; a new
+thumbs down defaults to none. Changing to thumbs up or clearing always removes reasons.
 
 ## Detail pages and provenance
 
@@ -212,7 +239,7 @@ and upstream credentials are accessed only by the Python backend.
 | `GET /api/health` | Check that an existing checkpoint can be read. |
 | `GET /api/summary?refresh=true` | Global positive/context article counts, cohort breakdown, and run metadata. |
 | `GET /api/contexts` | Current positive contexts; accepts `drug`, `gene`, `article`, `cohort`, `coverage`, `rating` (`all`, `up`, `hide_down`), `page`, and `page_size` (1–100). |
-| `PUT /api/contexts/{task_id}/rating` | Set `{ "rating": "up" }`, `"down"`, or `null` to clear; validates the saved positive claim first. |
+| `PUT /api/contexts/{task_id}/rating` | Set `{ "rating": "up" }`, `"down"`, or `null` to clear; accepts optional `error_reasons` for down; validates the saved positive claim first. |
 | `GET /api/contexts/{task_id}` | Full positive-entry provenance, including historical entries. |
 | `GET /api/contexts/{task_id}/source` | Read/verify existing cached text; never fetches from the network. |
 | `POST /api/contexts/{task_id}/source` | Explicitly retrieve and verify source text if no verified cached source exists. |

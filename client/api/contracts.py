@@ -1,6 +1,13 @@
 """Validated HTTP responses; raw saved records remain lossless JSON objects."""
 from typing import Any, Literal
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+ErrorReason = Literal[
+    "incorrect_gene_grouping", "incorrect_drug_grouping", "no_direct_interaction",
+    "no_indirect_interaction", "no_effects_on_gene_regulation", "not_enough_evidence",
+    "incorrect_directionality", "incorrect_supporting_evidence",
+]
 
 
 class Health(BaseModel):
@@ -27,11 +34,21 @@ class Summary(BaseModel):
 class ClaimRating(BaseModel):
     rating: Literal["up", "down"] | None = None
     rated_at: str | None = None
+    error_reasons: list[ErrorReason] = Field(default_factory=list)
 
 
 class RatingUpdate(BaseModel):
     model_config = ConfigDict(extra="forbid")
     rating: Literal["up", "down"] | None
+    error_reasons: list[ErrorReason] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def check_reasons(self):
+        if len(self.error_reasons) != len(set(self.error_reasons)):
+            raise ValueError("Error reasons must not contain duplicates")
+        if self.rating != "down" and self.error_reasons:
+            raise ValueError("Error reasons are only allowed for thumbs down")
+        return self
 
 
 class ContextRecord(ClaimRating):
