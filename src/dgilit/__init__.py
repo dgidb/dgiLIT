@@ -6,6 +6,8 @@ curation for DGIdb.
 from .dgilit_models import (
     InteractionClassificationPrompt,
     InteractionClassificationResult,
+    classification_result_model,
+    validate_classification,
 )
 from .qwen import Qwen3JsonClient
 from .pmc import PMCClient, PMCArticle
@@ -46,6 +48,8 @@ __all__ = (
     "EntityPreTaggingService",
     "InteractionClassificationPrompt",
     "InteractionClassificationResult",
+    "classification_result_model",
+    "validate_classification",
     "InteractionExtractionInput",
     "NormalizedConcept",
     "PubMedAbstract",

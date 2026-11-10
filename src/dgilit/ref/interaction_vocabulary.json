@@ -1,0 +1,370 @@
+{
+  "source": "interaction_types.xlsx, sheet1",
+  "normalization": "ACTIVATING → activating; INHIBITORY → inhibiting; blank → unclear. Duplicate names merged, preserving descriptions, references and source rows.",
+  "types": [
+    {
+      "name": "activator",
+      "description": "An activator interaction is when a drug activates a biological response from a target, although the mechanism by which it does so may not be understood.",
+      "directionality": "activating",
+      "references": [
+        "DrugBank examples: pubmed:12070353"
+      ],
+      "source_rows": [
+        8
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "adduct",
+      "description": "An adduct interaction is when a drug-protein adduct forms by the covalent binding of electrophilic drugs or their reactive metabolite(s) to a target protein.",
+      "directionality": "unclear",
+      "references": [
+        "pubmed:16199025"
+      ],
+      "source_rows": [
+        11
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "agonist",
+      "description": "An agonist interaction occurs when a drug binds to a target receptor and activates the receptor to produce a biological response.",
+      "directionality": "activating",
+      "references": [
+        "Wikipedia - Agonist"
+      ],
+      "source_rows": [
+        13
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "allosteric modulator",
+      "description": "An allosteric modulator interaction occurs when drugs exert their effects on their protein targets via a different binding site than the natural (orthosteric) ligand site.",
+      "directionality": "unclear",
+      "references": [
+        "pubmed:24699297"
+      ],
+      "source_rows": [
+        17
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "antagonist",
+      "description": "An antagonist interaction occurs when a drug blocks or dampens agonist-mediated responses rather than provoking a biological response itself upon binding to a target receptor.",
+      "directionality": "inhibiting",
+      "references": [
+        "Wikipedia - Receptor Antagonist"
+      ],
+      "source_rows": [
+        24
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "antibody",
+      "description": "An antibody interaction occurs when an antibody drug specifically binds the target molecule. Most interactions of this class fall under various natural antibody functions: neutralization, antibody-dependent cell-mediated cytotoxicity (ADCC), complement-dependent cytotoxicity (CDC), or drug delivery carriers.",
+      "directionality": "inhibiting",
+      "references": [
+        "pubmed:26441475",
+        "Wikipedia - Antibody"
+      ],
+      "source_rows": [
+        10,
+        19
+      ],
+      "alternate_descriptions": [
+        "An antibody interaction occurs when an antibody drug specifically binds the target molecule."
+      ]
+    },
+    {
+      "name": "antisense oligonucleotide",
+      "description": "An antisense oligonucleotide interaction occurs when a complementary RNA drug binds to an mRNA target to inhibit translation by physically obstructing the mRNA translation machinery.",
+      "directionality": "inhibiting",
+      "references": [
+        "pubmed:10228554"
+      ],
+      "source_rows": [
+        18
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "binder",
+      "description": "A binder interaction has drugs physically binding to their target.",
+      "directionality": "unclear",
+      "references": [
+        "DrugBank examples: pubmed:12388666 pubmed:7584665 pubmed:14507470"
+      ],
+      "source_rows": [
+        21
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "blocker",
+      "description": "Antagonist interactions are sometimes referred to as blocker interactions; examples include alpha blockers, beta blockers, and calcium channel blockers.",
+      "directionality": "inhibiting",
+      "references": [
+        "Wikipedia - Receptor Antagonist"
+      ],
+      "source_rows": [
+        25
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "chaperone",
+      "description": "Pharmacological chaperone interactions occur when substrates or modulators directly bind to a partially folded biosynthetic intermediate to stabilise the protein and allow it to complete the folding process to yield a functional protein.",
+      "directionality": "activating",
+      "references": [
+        "pubmed:17597553"
+      ],
+      "source_rows": [
+        32
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "cleavage",
+      "description": "Cleavage interactions take place when the drug promotes degeneration of the target protein through cleaving of the peptide bonds.",
+      "directionality": "inhibiting",
+      "references": [
+        "DrugBank examples: pubmed:10666203"
+      ],
+      "source_rows": [
+        22
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "cofactor",
+      "description": "A cofactor is a drug that is required for a target protein's biological activity.",
+      "directionality": "activating",
+      "references": [
+        "Wikipedia - Cofactor"
+      ],
+      "source_rows": [
+        26
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "immunotherapy",
+      "description": "Immunotherapy is used to upregulate or downregulate the immune system to achieve a therapeutic effect in immunological mediated disorders, including immunodeficiencies, hypersensitivity reactions, autoimmune diseases, tissue and organ transplantations, malignancies, inflammatory disorders, infectious diseases, and any other disease, where immunotherapy can improve the quality and life expectancy.",
+      "directionality": "unclear",
+      "references": [
+        "https://www.ncbi.nlm.nih.gov/books/NBK519046/"
+      ],
+      "source_rows": [
+        5,
+        36
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "inducer",
+      "description": "In inducer interactions, the drug increases the activity of its target enzyme.",
+      "directionality": "activating",
+      "references": [
+        "Wikipedia - Enzyme Inducer"
+      ],
+      "source_rows": [
+        27
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "inhibitor",
+      "description": "In inhibitor interactions, the drug binds to a target and decreases its expression or activity. Most interactions of this class are enzyme inhibitors, which bind an enzyme to reduce enzyme activity.",
+      "directionality": "inhibiting",
+      "references": [
+        "Wikipedia - Enzyme Inhibitor"
+      ],
+      "source_rows": [
+        28
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "inhibitory allosteric modulator",
+      "description": "In inhibitory allosteric modulator interactions, also called negative allosteric modulator interactions, the drug will inhibit activity of its target enzyme.",
+      "directionality": "inhibiting",
+      "references": [
+        "pubmed:24699297"
+      ],
+      "source_rows": [
+        23
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "inverse agonist",
+      "description": "An inverse agonist interaction occurs when a drug binds to the same target as an agonist, but induces a pharmacological response opposite to that of the agonist.",
+      "directionality": "inhibiting",
+      "references": [
+        "Wikipedia - Inverse Agonist"
+      ],
+      "source_rows": [
+        6
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "ligand",
+      "description": "In ligand interactions, a drug forms a complex with its target protein to serve a biological function.",
+      "directionality": "unclear",
+      "references": [
+        "Wikipedia - Ligand"
+      ],
+      "source_rows": [
+        7
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "modulator",
+      "description": "In modulator interactions, the drug regulates or changes the activity of its target. In contrast to allosteric modulators, this interaction type may not involve any direct binding to the target.",
+      "directionality": "unclear",
+      "references": [
+        "Modulators. Segen's Medical Dictionary. (2011). Retrieved online October 9 2015."
+      ],
+      "source_rows": [
+        29
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "multitarget",
+      "description": "In multitarget interactions, drugs achieve a physiological effect through simultaneous interaction with multiple gene targets.",
+      "directionality": "unclear",
+      "references": [
+        "pubmed:22768266"
+      ],
+      "source_rows": [
+        20
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "negative modulator",
+      "description": "In a negative modulator interaction, the drug negatively regulates the amount or activity of its target. In contrast to an inhibitory allosteric modulator, this interaction type may not involve any direct binding to the target.",
+      "directionality": "inhibiting",
+      "references": [
+        "Wikipedia - Allosteric Modulator"
+      ],
+      "source_rows": [
+        9
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "other/unknown",
+      "description": "This is a label given by the reporting source to an interaction that doesn't belong to other interaction types, as defined by the reporting source.",
+      "directionality": "unclear",
+      "references": [],
+      "source_rows": [
+        14
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "partial antagonist",
+      "description": "In a partial antagonist interaction, a drug will only partially reduce the amplitude of a functional response at its target receptor, as compared to the reduction of response by a full antagonist.",
+      "directionality": "inhibiting",
+      "references": [
+        "pubmed:6188923"
+      ],
+      "source_rows": [
+        31
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "positive modulator",
+      "description": "In a positive modulator interaction, the drug increases activity of the target enzyme.",
+      "directionality": "activating",
+      "references": [
+        "pubmed:24699297"
+      ],
+      "source_rows": [
+        12
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "potentiator",
+      "description": "In a potentiator interaction, the drug enhances the sensitivity of the target to the target's ligands.",
+      "directionality": "unclear",
+      "references": [
+        "Wikipedia - Potentiator"
+      ],
+      "source_rows": [
+        30
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "product of",
+      "description": "These \"interactions\" occur when the target gene produces the endogenous drug.",
+      "directionality": "unclear",
+      "references": [],
+      "source_rows": [
+        15
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "stimulator",
+      "description": "In a stimulator interaction, the drug directly or indirectly affects its target, stimulating a physiological response.",
+      "directionality": "activating",
+      "references": [
+        "DrugBank examples: pubmed:23318685 pubmed:17148649 pubmed:15955613"
+      ],
+      "source_rows": [
+        2,
+        33
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "substrate",
+      "description": "Substrates are drugs which are metabolized by the protein they are interacting with.",
+      "directionality": "unclear",
+      "references": [
+        "FDA - Table of Substrates, Inhibitors and Inducers"
+      ],
+      "source_rows": [
+        3,
+        34
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "suppressor",
+      "description": "In a suppressor interaction, the drug directly or indirectly affects its target, suppressing a physiological process.",
+      "directionality": "inhibiting",
+      "references": [
+        "DrugBank examples: pubmed:8386571 pubmed:14967460"
+      ],
+      "source_rows": [
+        16
+      ],
+      "alternate_descriptions": []
+    },
+    {
+      "name": "vaccine",
+      "description": "In vaccine interactions, the drugs stimulate or restore an immune response to their target.",
+      "directionality": "activating",
+      "references": [
+        "NCI - Cancer Vaccines"
+      ],
+      "source_rows": [
+        4,
+        35
+      ],
+      "alternate_descriptions": []
+    }
+  ]
+}

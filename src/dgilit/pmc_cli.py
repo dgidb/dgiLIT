@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import json
+from pathlib import Path
 import subprocess
 import sys
 
@@ -16,6 +17,7 @@ def main(argv=None):
     parser.add_argument("--output", default=str(DEFAULT_OUTPUT))
     parser.add_argument("--start", help="Inclusive publication date YYYY-MM-DD (new runs)")
     parser.add_argument("--end", help="Inclusive publication date YYYY-MM-DD (new runs)")
+    parser.add_argument("--prompt-version", choices=["v1", "v2", "v3"], help="Prompt for new runs; v3 is opt-in")
     parser.add_argument("--pilot-only", action="store_true", help="Stop after the initial 100-article / 100-inference pilot")
     parser.add_argument("--max-calls", type=int, help="Optional explicit inference cap for the full phase, after pilot")
     parser.add_argument("--detach", action="store_true", help="Run in a detached process with durable run.log (run only)")
@@ -25,6 +27,14 @@ def main(argv=None):
     if bool(args.start) != bool(args.end):
         parser.error("Supply both --start and --end")
     config = PipelineConfig(start=args.start, end=args.end) if args.start else None
+    if args.prompt_version:
+        from dataclasses import replace
+        saved = config or PipelineConfig()
+        if config is None and (Path(args.output) / "state.sqlite").exists():
+            import sqlite3
+            with sqlite3.connect(Path(args.output) / "state.sqlite") as db:
+                saved = PipelineConfig(**json.loads(db.execute("SELECT value FROM meta WHERE key='config'").fetchone()[0]))
+        config = replace(saved, prompt_version=args.prompt_version)
     pipeline = PMCPipeline(args.output, config=config)
     if args.detach:
         if args.command != "run":

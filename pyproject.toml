@@ -39,7 +39,7 @@ transformers = [
 dgilit-pmc = "dgilit.pmc_cli:main"
 
 [tool.setuptools.package-data]
-dgilit = ["dgilit_prompts/*.text"]
+dgilit = ["dgilit_prompts/*.text", "ref/*.md", "ref/*.json"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

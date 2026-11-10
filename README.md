@@ -169,7 +169,8 @@ still reduce throughput.
 ```python
 from dgilit import (
     InteractionClassificationPrompt,
-    InteractionClassificationResult,
+    classification_result_model,
+    validate_classification,
     Qwen3JsonClient,
 )
 from wags_llm.prompts import build_empty_registry
@@ -192,7 +193,13 @@ result = runner.execute(
         candidate_drug="Venetoclax",
         candidate_gene="BCL2",
     ),
-    response_model=InteractionClassificationResult,
+    response_model=classification_result_model(prompt.version),
+)
+# Schema validation alone cannot check the source quote or candidate identity.
+result = validate_classification(
+    result, version=prompt.version,
+    context="Venetoclax inhibits BCL2.",
+    candidate_drug="Venetoclax", candidate_gene="BCL2",
 )
 ```
 
@@ -307,3 +314,54 @@ failures. Positive pairs can have unresolved additional contexts; inspect
 are linked through task IDs; JSON payload columns retain the complete records.
 Exports are snapshots: run `export` again for newer results, and retain/remove
 old snapshots according to available storage.
+
+## DGIdb-grounded classification (opt-in v3)
+
+`v3` includes the packaged DGIdb data model, druggability and interaction-type
+references in every system prompt, plus 30 canonical types derived from the supplied
+spreadsheet. The revised v3 keeps v2's inclusive interaction definition, including
+reported pathway, expression, sensitivity, resistance and treatment-response relationships.
+It does not categorically reject association types. Reference knowledge defines labels;
+the article context must supply evidence for the candidate pair. Response associations
+without a supported mechanism use `other/unknown` and do not imply direct targeting.
+
+The example above uses the version-specific schema and shared source validation.
+For new PMC runs, select v3 explicitly and use a separate output directory:
+
+```bash
+dgilit-pmc run --output data/pmc-v3-pilot --prompt-version v3 --pilot-only
+```
+
+The default remains v2 pending evaluation. Existing runs keep their saved configuration;
+changing prompts or any assembled reference content requires a new output directory.
+The execution fingerprint hashes the complete assembled system prompt. Claim Explorer
+verifies and displays that same assembled content for v3. Evidence quote matching and
+schema checks establish traceability, not semantic correctness.
+
+Rebuild the reviewed benchmark seed and pending review queue from existing artifacts:
+
+```bash
+python scripts/prepare_classification_benchmark.py
+PYTHONPATH=src python -m dgilit.evaluation data/classification_benchmark/reviewed.jsonl --output /tmp/dgilit-v2-v3-comparison
+```
+
+The evaluation loads the configured Qwen model and runs both prompts at temperature
+zero on identical full contexts. It writes inference records, model/reference hashes,
+precision, recall, false-positive categories, type/directionality accuracy, invalid-output
+rate, token usage and newly missed positive IDs. It fails oversized contexts rather than
+changing one version's evidence. See [benchmark instructions](data/classification_benchmark/README.md)
+for human review requirements and promotion criteria. No quality improvement is assumed
+from the prompt change alone.
+
+The [original strict-v3 seed comparison](data/classification_benchmark/seed_comparison/README.md)
+**failed the promotion gate**: false positives fell from 4 to 2, but recall against the
+historical labels fell from 92.1% to 55.3% and invalid quotes increased from 1 to 3.
+That result belongs to the original strict prompt, which is archived with its outputs.
+The current v3 removes that exclusion policy and restores v2's inclusive evidence boundary.
+Keep v3 experimental pending evaluation and a broader held-out review.
+
+The [revised inclusive-v3 comparison](data/classification_benchmark/seed_comparison_inclusive/README.md)
+removes that exclusion policy and recovers 12 of the 14 previously missed positives.
+Recall rises to 86.8%, but all 42 raw interaction decisions now match v2, with the same
+four false positives and two additional quote failures. Precision is 89.2% versus v2's
+89.7%. This revision also fails the promotion gate; v2 remains the default.

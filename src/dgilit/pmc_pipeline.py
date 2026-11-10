@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 import time
 
-from .dgilit_models import InteractionClassificationPrompt, InteractionClassificationResult
+from .dgilit_models import InteractionClassificationPrompt, classification_result_model, validate_classification
 from .pmc import PMCArticle, PMCClient
 from .pmc_store import Store, ResourceLimit, digest, now
 
@@ -60,7 +60,8 @@ class PMCPipeline:
         self.pretagger, self.llm = pretagger, llm
         self.min_free_bytes, self.cache_bytes = min_free_bytes, cache_bytes
         self.prompt = InteractionClassificationPrompt(self.config.prompt_version)
-        self.schema = InteractionClassificationResult.model_json_schema()
+        self.schema = classification_result_model(self.config.prompt_version).model_json_schema()
+        self.prompt.build_system_prompt()  # Fail before inference if references are unavailable.
 
     def discover(self):
         with self.store.writer_lock():
@@ -275,7 +276,8 @@ class PMCPipeline:
         try:
             payload = self.prompt.build_payload(context, task["drug"], task["gene"])
             response = self.llm.invoke_json(self.prompt.build_system_prompt(), self.prompt.build_user_prompt(payload), self.schema)
-            result = InteractionClassificationResult.model_validate(response.parsed_json)
+            result = validate_classification(response.parsed_json, version=self.config.prompt_version,
+                                             context=context, candidate_drug=task["drug"], candidate_gene=task["gene"])
             evidence = " ".join((result.evidence or "").split()).strip('"“”')
             verified = bool(evidence) and evidence.casefold() in " ".join(context.split()).casefold()
             if result.interaction and not verified:
