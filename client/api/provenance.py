@@ -15,12 +15,16 @@ def assemble_provenance(detail, settings):
     prompt = {"version": version, "saved_hash": expected, "status": "unavailable", "template": None}
     if isinstance(version, str) and re.fullmatch(r"[A-Za-z0-9_-]+", version):
         try:
-            template = (settings.prompt_dir / f"{version}.text").read_text()
+            if version == "v3":
+                from dgilit.references import assemble_system_prompt
+                template = assemble_system_prompt(version, settings.prompt_dir, settings.prompt_dir.parent / "ref")
+            else:
+                template = (settings.prompt_dir / f"{version}.text").read_text()
             if expected and digest(template) == expected:
                 prompt.update(status="verified", template=template)
             else:
                 prompt["status"] = "hash_mismatch"
-        except OSError:
+        except (OSError, ValueError, KeyError, TypeError, ImportError):
             pass
     # Original tokenizer-rendered messages were not persisted by the producer.
     prompt["note"] = "This is the verified template when available; original rendered model messages were not saved."

@@ -325,3 +325,27 @@ def test_filter_connections_keep_both_databases_read_only(setup):
     assert len(attachments)==2 and all('?mode=ro' in s for s in attachments)
     assert not any(s.lstrip().upper().startswith(('INSERT','UPDATE','DELETE','CREATE')) for s in statements)
     assert settings.review_db.read_bytes()==before
+
+
+def test_v3_provenance_checks_assembled_references(setup):
+    import shutil
+    from dgilit.references import REF_DIR, assemble_system_prompt
+    from dgilit import InteractionClassificationPrompt
+    from api.provenance import assemble_provenance
+    settings = setup[0]
+    shutil.copy(InteractionClassificationPrompt('v3').prompt_path, settings.prompt_dir / 'v3.text')
+    refs = settings.prompt_dir.parent / 'ref'
+    shutil.copytree(REF_DIR, refs)
+    assembled = assemble_system_prompt('v3', settings.prompt_dir, refs)
+    detail = {'task': {'pmcid': 'PMC1', 'result': {'prompt_version': 'v3'}},
+              'metadata': {'execution_fingerprint': {'prompt_hash': digest(assembled)}}}
+    value = assemble_provenance(detail, settings)
+    assert value['prompt']['status'] == 'verified'
+    assert value['prompt']['template'] == assembled
+    with (refs / 'data_model.md').open('a') as f:
+        f.write('\nReference changed.')
+    value = assemble_provenance(detail, settings)
+    assert value['prompt']['status'] == 'hash_mismatch'
+    assert value['prompt']['template'] is None
+    (refs / 'interaction_vocabulary.json').unlink()
+    assert assemble_provenance(detail, settings)['prompt']['status'] == 'unavailable'
