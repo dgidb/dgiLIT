@@ -1,0 +1,10 @@
+# Install from client/: python -m pip install -r api/requirements.txt
+-e ..
+# Match the retrieval package's existing WAGS API without altering the CLI environment.
+wags-llm @ git+https://github.com/GenomicMedLab/wags-llm.git@4aefb2c1e17e19b34d5da5b978af35e409d5bbf1
+fastapi==0.118.0
+uvicorn==0.37.0
+httpx==0.28.1
+requests==2.32.5
+inflect==7.5.0
+pytest>=8.4,<9
