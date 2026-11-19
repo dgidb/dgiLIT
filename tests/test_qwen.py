@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import json
 import sys
 import unittest
@@ -90,6 +91,50 @@ class QwenTests(unittest.TestCase):
         with patch.dict(sys.modules, {'mlx.core': None}):
             with self.assertRaisesRegex(ImportError, 'dgilit\\[qwen\\]'):
                 Qwen3JsonClient()
+
+    def test_import_failures(self):
+        original_import = builtins.__import__
+        for module_name in ['mlx', 'mlx.core', 'mlx_lm', 'mlx_lm.sample_utils']:
+            with self.subTest(module=module_name):
+                failure = ModuleNotFoundError('Missing MLX module', name=module_name)
+
+                def missing_module(name, *args, **kwargs):
+                    if name == 'mlx.core':
+                        raise failure
+                    return original_import(name, *args, **kwargs)
+
+                with patch('builtins.__import__', side_effect=missing_module):
+                    with self.assertRaisesRegex(ImportError, 'dgilit\\[qwen\\]') as caught:
+                        Qwen3JsonClient()
+                self.assertIs(caught.exception.__cause__, failure)
+
+    def test_metal_import_failure(self):
+        original_import = builtins.__import__
+        failure = ImportError('[metal::load_device] No Metal device available')
+
+        def unavailable_metal(name, *args, **kwargs):
+            if name == 'mlx.core':
+                raise failure
+            return original_import(name, *args, **kwargs)
+
+        with patch('builtins.__import__', side_effect=unavailable_metal):
+            with self.assertRaisesRegex(RuntimeError, 'MLX initialization failed:.*No Metal device') as caught:
+                Qwen3JsonClient()
+        self.assertIs(caught.exception.__cause__, failure)
+
+    def test_missing_transitive_dependency(self):
+        original_import = builtins.__import__
+        failure = ModuleNotFoundError("No module named 'dependency'", name='dependency')
+
+        def missing_dependency(name, *args, **kwargs):
+            if name == 'mlx.core':
+                raise failure
+            return original_import(name, *args, **kwargs)
+
+        with patch('builtins.__import__', side_effect=missing_dependency):
+            with self.assertRaises(ModuleNotFoundError) as caught:
+                Qwen3JsonClient()
+        self.assertIs(caught.exception, failure)
 
     def test_response_errors(self):
         for text, error in [('', LLMEmptyResponseError), ('  ', LLMEmptyResponseError),
