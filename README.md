@@ -143,3 +143,74 @@ for entity in result.entities:
 ```
 
 For complete examples including literature retrieval, AI-assisted interaction classification, and evaluation workflows, see the notebooks in the `notebooks/` directory.
+
+### Qwen3-14B interaction assessment
+
+Install the optional local inference dependencies:
+
+```bash
+pip install -e '.[qwen]'
+```
+
+`Qwen3JsonClient` loads `mlx-community/Qwen3-14B-4bit` once per instance with
+MLX-LM on Apple Silicon. Use native arm64 Python on macOS with Metal available;
+the client fails explicitly instead of falling back to CPU. Install the extra
+in the environment used by your notebook kernel. Restart that kernel before
+switching from the old client to release previously loaded PyTorch weights.
+
+The extra uses MLX-LM 0.32.x and MLX 0.32.x. Transformers may still be used for
+tokenization, but model inference runs through MLX/Metal. Initial loading downloads
+the quantized weights to the Hugging Face cache. Leave unified-memory headroom
+for context/KV cache, tagging models, and other applications; memory pressure can
+still reduce throughput.
+
+```python
+from dgilit import (
+    InteractionClassificationPrompt,
+    InteractionClassificationResult,
+    Qwen3JsonClient,
+)
+from wags_llm.prompts import build_empty_registry
+from wags_llm.services import StructuredTaskRunner
+
+prompt = InteractionClassificationPrompt(version="v2")
+registry = build_empty_registry()
+registry.register(prompt)
+client = Qwen3JsonClient(
+    model_id="mlx-community/Qwen3-14B-4bit",
+    max_tokens=1000,
+    temperature=0.0,
+)
+runner = StructuredTaskRunner(client=client, prompt_registry=registry)
+result = runner.execute(
+    prompt_name=prompt.name,
+    prompt_version=prompt.version,
+    payload=prompt.build_payload(
+        context="Venetoclax inhibits BCL2.",
+        candidate_drug="Venetoclax",
+        candidate_gene="BCL2",
+    ),
+    response_model=InteractionClassificationResult,
+)
+```
+
+The client disables thinking, uses greedy decoding at temperature zero, and
+passes the response schema as prompt instructions. JSON parsing and WAGS's
+Pydantic validation detect invalid responses; decoding is not schema-constrained.
+`max_tokens` limits newly generated tokens. Inputs exceeding the model's context
+window plus this budget fail explicitly rather than being truncated.
+
+The notebook at
+`notebooks/test_sets/test4_curated_dgidb_qwen3_14b/01_wags_pretagging.ipynb`
+reproduces test2's assessment using its existing text workbook, with Qwen-specific
+CSV and Parquet outputs. Its setup cell lists the additional notebook dependencies
+and its one-pair smoke check precedes the full experiment. The existing test2
+Claude/Bedrock workflow remains available.
+
+Model loading time is exposed as `client.load_seconds`. After each inference,
+`client.last_generation_stats` reports prompt/generated tokens, elapsed seconds,
+generation tokens per second, and end-to-end tokens per second. Test4 prints
+these for a synthetic smoke check and a warmed real candidate pair before the
+full run. These checks validate the response schema and measure actual speed;
+no fixed latency is guaranteed. CUDA `device_map` and `dtype` arguments from the
+previous Qwen implementation are no longer accepted.

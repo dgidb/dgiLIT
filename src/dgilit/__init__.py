@@ -7,6 +7,7 @@ from .dgilit_models import (
     InteractionClassificationPrompt,
     InteractionClassificationResult,
 )
+from .qwen import Qwen3JsonClient
 
 from .pubmed import (
     PubMedAbstract,
@@ -35,6 +36,7 @@ from .tagging import (
 __version__ = "0.1.0"
 
 __all__ = (
+    "Qwen3JsonClient",
     "BioBertEntityTagger",
     "CompositeEntityTagger",
     "EntityMention",

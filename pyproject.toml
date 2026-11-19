@@ -20,6 +20,10 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+qwen = [
+  "mlx>=0.32.2,<0.33",
+  "mlx-lm>=0.32.2,<0.33",
+]
 transformers = [
   "transformers",
 ]
