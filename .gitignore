@@ -14,3 +14,5 @@ __pycache__/
 
 # Generated corpus checkpoints, text cache, and exports
 /data/pmc_last10years_*/
+# Local Code Review skills
+.agents/
