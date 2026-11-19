@@ -214,3 +214,93 @@ these for a synthetic smoke check and a warmed real candidate pair before the
 full run. These checks validate the response schema and measure actual speed;
 no fixed latency is guaranteed. CUDA `device_map` and `dtype` arguments from the
 previous Qwen implementation are no longer accepted.
+
+### Resumable ten-year PMC extraction
+
+See the [workflow and CLI guide](notebooks/pmc_last10years/README.md) for setup,
+command examples, status-field explanations, stopping/resuming, and exported data.
+
+The corpus workflow in `notebooks/pmc_last10years/01_pmc_interactions.ipynb`
+reuses the section retrieval, BioBERT/VICC normalization, and Qwen classification
+used by the test notebooks. It discovers **all PMC records published from
+2016-11-03 through 2026-11-03**, including records without a PMID. It uses every
+parsed abstract/body section, with abstract fallback when full text cannot be
+retrieved. PDFs and supplementary attachments are not processed. PMC content
+availability varies; see [PMC's supported retrieval services](https://pmc.ncbi.nlm.nih.gov/tools/developers/).
+
+Use native arm64 Python on Apple Silicon with Metal available:
+
+```bash
+pip install -e '.[pmc,qwen]'
+# Set MC_EMAIL or NCBI_EMAIL for NCBI contact information; NCBI_API_KEY is optional.
+python -m dgilit.pmc_cli discover
+python -m dgilit.pmc_cli run --pilot-only
+python -m dgilit.pmc_cli status
+python -m dgilit.pmc_cli run
+python -m dgilit.pmc_cli retry-failed
+python -m dgilit.pmc_cli run
+python -m dgilit.pmc_cli export
+```
+
+`dgilit-pmc` is an equivalent installed entry point. Every command accepts
+`--output PATH`. A new run can set both `--start YYYY-MM-DD` and `--end YYYY-MM-DD`;
+subsequent commands reuse its stored configuration. The default output is
+`data/pmc_last10years_2016-11-03_2026-11-03/` in this checkout. Generated corpus
+data are ignored by Git. Set a persistent output path explicitly for an installed
+package outside this checkout.
+
+`run` discovers any missing partitions, executes an initial 100-article
+publication-year-stratified pilot with at most 100 Qwen tasks, and continues the
+entire cohort. It has no default corpus cap. `--pilot-only` stops after the pilot;
+`--max-calls N` explicitly bounds calls in the subsequent full phase. The pilot
+report estimates candidate volume, inference time, and state storage; these are
+extrapolations from a small sample, not a promised completion date. The saved
+test4 benchmark was approximately 12 seconds per pair, so a millions-of-articles
+run may be impractical on one Mac. Corpus-level processing remains resumable
+across interruptions. For unattended use, redirect CLI output to a log and run
+under your usual terminal/session manager; keep the Mac awake as appropriate.
+
+SQLite stores transactional checkpoints and all successful classifications.
+An exclusive writer lock prevents concurrent `run`/`discover` writers.
+`status` reads current state; `status.json` is a durable atomic snapshot refreshed
+about every 30 seconds during active batches and at run boundaries. `all_articles_terminal` includes articles with recorded
+failures, while `successful_completion` additionally requires no unresolved
+failure events. Inspect coverage and failure counts before calling an extraction
+complete. `retry-failed` requeues failed work while preserving successful tasks.
+Changed configurations, model revisions, prompt contents, or inference package
+versions require a separate output directory. `run --detach` launches an
+independent process and writes progress to `run.log` in the output directory.
+`export` reads a consistent SQLite snapshot and can run while extraction proceeds.
+
+Text retrieval uses supported NCBI APIs, a shared limiter below three requests
+per second, five transient retries, and `Retry-After` handling. Downloaded parsed
+text uses a 10-GiB cache; completed articles can be evicted. If free space falls
+below 10 GiB, processing checkpoints and exits without reducing the cohort.
+Results continue to grow separately from that cache; larger storage may still be
+needed. Evidence, hashes, entity offsets, and provenance persist after text
+eviction, but reproducing a complete evicted context requires refetching it.
+
+NER uses each model's token limit with 64-token overlap and section-relative
+offsets. Only normalized drug/gene concepts enter the section-level Cartesian
+product; raw mentions and unsuccessful normalization outcomes remain auditable.
+No gene panel or preassigned gene labels are used. Qwen uses prompt `v2`,
+temperature zero, thinking disabled, and 1,000 generated tokens. Context windows
+reserve prompt/schema space and use 256-token overlap; every section candidate
+pair is assessed against every context of an oversized section. No text is
+silently truncated. The pipeline does not infer across separate sections.
+
+Any positive context supports an article-level positive pair. A negative pair
+requires every required context to finish negatively; failures remain unresolved.
+Positive evidence must be a direct quote verifiable in its context. These are
+**model-predicted interactions**, intended for expert review. There is no labeled
+corpus truth set, so these outputs do not establish precision or recall.
+
+`export` writes Zstandard-compressed Parquet shards in a new snapshot directory
+and updates `exports/latest.json` only after every dataset and its manifest are
+complete. Datasets include articles, partitions, sections, entities,
+classifications (including negatives), article pairs, positive interactions, and
+failures. Positive pairs can have unresolved additional contexts; inspect
+`unresolved_contexts` and `article_status`. Evidence and classification details
+are linked through task IDs; JSON payload columns retain the complete records.
+Exports are snapshots: run `export` again for newer results, and retain/remove
+old snapshots according to available storage.
