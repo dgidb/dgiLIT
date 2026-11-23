@@ -18,6 +18,8 @@ dgiLIT addresses this problem by providing a modular pipeline that:
 
 The workflow is designed to reduce the amount of literature requiring manual inspection while maintaining human oversight of the final curated interactions.
 
+See the [package-to-client workflow diagrams](docs/workflow.md) for component connections, inputs and outputs, checkpoint storage, and how Claim Explorer loads and displays results.
+
 ## Installation
 
 Install the latest release from PyPI:
@@ -220,9 +222,10 @@ previous Qwen implementation are no longer accepted.
 See the [workflow and CLI guide](notebooks/pmc_last10years/README.md) for setup,
 command examples, status-field explanations, stopping/resuming, and exported data.
 
-The corpus workflow in `notebooks/pmc_last10years/01_pmc_interactions.ipynb`
-reuses the section retrieval, BioBERT/VICC normalization, and Qwen classification
-used by the test notebooks. It discovers **all PMC records published from
+The corpus CLI reuses the section retrieval, BioBERT/VICC normalization, and Qwen
+classification used by the test notebooks. The read-only analysis notebook at
+`notebooks/pmc_last10years/01_pmc_interactions.ipynb` inspects the CLI's current
+pilot/full-cohort checkpoints without generating data. The CLI discovers **all PMC records published from
 2016-11-03 through 2026-11-03**, including records without a PMID. It uses every
 parsed abstract/body section, with abstract fallback when full text cannot be
 retrieved. PDFs and supplementary attachments are not processed. PMC content
