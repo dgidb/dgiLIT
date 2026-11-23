@@ -41,8 +41,14 @@ class Qwen3JsonClient:
             import mlx.core as mx
             from mlx_lm import load, stream_generate
             from mlx_lm.sample_utils import make_sampler
+        except ModuleNotFoundError as exc:
+            if exc.name in {"mlx", "mlx.core", "mlx_lm", "mlx_lm.sample_utils"}:
+                raise ImportError(
+                    "Install MLX dependencies with pip install 'dgilit[qwen]'"
+                ) from exc
+            raise
         except ImportError as exc:
-            raise ImportError("Install MLX dependencies with pip install 'dgilit[qwen]'") from exc
+            raise RuntimeError(f"MLX initialization failed: {exc}") from exc
         if not mx.metal.is_available():
             raise RuntimeError("Qwen MLX requires Metal acceleration; CPU fallback is disabled")
         mx.set_default_device(mx.gpu)
