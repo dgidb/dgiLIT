@@ -20,6 +20,13 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+pmc = [
+  "transformers",
+  "torch",
+  "requests",
+  "inflect",
+  "huggingface-hub",
+]
 qwen = [
   "mlx>=0.32.2,<0.33",
   "mlx-lm>=0.32.2,<0.33",
@@ -27,6 +34,12 @@ qwen = [
 transformers = [
   "transformers",
 ]
+
+[project.scripts]
+dgilit-pmc = "dgilit.pmc_cli:main"
+
+[tool.setuptools.package-data]
+dgilit = ["dgilit_prompts/*.text"]
 
 [tool.setuptools.packages.find]
 where = ["src"]
